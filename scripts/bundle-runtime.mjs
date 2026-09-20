@@ -29,7 +29,16 @@ import { createRequire } from "node:module";
 
 const ROOT_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const STAGE_DIR = resolve(ROOT_DIR, "src-tauri/resources");
-const WITH_KERNEL = process.argv.includes("--with-kernel");
+//   --with-kernel   stage the kernel tree (distribution builds)
+//   --light         force the kernel out of the staged resources
+//   (default)       auto: keep an already-staged kernel, otherwise stage light
+//                   — this is what beforeBuildCommand runs, so a distribution
+//                   build does not wipe the kernel staged just before it
+const MODE = process.argv.includes("--with-kernel")
+  ? "kernel"
+  : process.argv.includes("--light")
+    ? "light"
+    : "auto";
 
 const DSH_DIR = resolve(ROOT_DIR, "deepseek-harness");
 const DSH_BIN = join(DSH_DIR, "apps", "cli", "lib", "bin.js");
@@ -84,11 +93,8 @@ ok("frontend dist/ present");
 if (!existsSync(BRIDGE_ENTRY)) fail(`kernel bridge entry missing: ${BRIDGE_ENTRY}`);
 if (!existsSync(CORDIS_PATCH)) fail(`cordis patch missing: ${CORDIS_PATCH}`);
 
-if (WITH_KERNEL) {
-  if (!existsSync(DSH_BIN) || !existsSync(SDK_CLIENT)) {
-    fail("deepseek-harness kernel is not built. Run `pnpm run prepare:kernel` first.");
-  }
-  ok(`built dsh kernel verified: ${DSH_BIN}`);
+if (MODE === "kernel" && !existsSync(DSH_BIN)) {
+  fail("deepseek-harness kernel is not built. Run `pnpm run prepare:kernel` first.");
 }
 
 // 2. Bridge bundle (self-contained; `ws` is the only non-builtin import) ---
@@ -129,7 +135,47 @@ ok(`node runtime staged (${process.version})`);
 // 5. Kernel tree (opt-in) --------------------------------------------------
 
 const kernelOut = stageDir("kernel");
-if (WITH_KERNEL) {
+// The kernel's own CLI entry marks a fully staged runtime tree.
+const kernelPresent = existsSync(join(kernelOut, "apps", "cli", "lib", "bin.js"));
+
+if (MODE === "kernel") {
+  // pnpm's default layout links dependencies with NTFS junctions; following
+  // them during staging duplicates the store several-fold, and the NSIS/MSI
+  // extractors cannot recreate junctions anyway. Re-link with the hoisted
+  // linker (npm-style real files) so the staged tree is plain files.
+  //
+  // pnpm 11 reads `nodeLinker` only from pnpm-workspace.yaml, so the setting
+  // is appended temporarily and the tracked file restored right after — the
+  // working tree stays pollution-free; only node_modules (untracked) changes.
+  // A marker short-circuits repeat stagings while the layout stays hoisted.
+  const hoistMarker = join(DSH_DIR, "node_modules", ".atrium-hoisted");
+  const workspaceYaml = join(DSH_DIR, "pnpm-workspace.yaml");
+  if (!existsSync(hoistMarker)) {
+    info("relinking kernel node_modules with nodeLinker=hoisted (one-off)...");
+    const originalYaml = readFileSync(workspaceYaml, "utf8");
+    try {
+      const settingsYaml = originalYaml.includes("nodeLinker:")
+        ? originalYaml
+        : `${originalYaml.replace(/\s*$/, "")}\nnodeLinker: hoisted\n`;
+      writeFileSync(workspaceYaml, settingsYaml);
+      rmSync(join(DSH_DIR, "node_modules"), { recursive: true, force: true });
+      const relink = spawnSync("pnpm", ["install"], {
+        cwd: DSH_DIR,
+        stdio: "inherit",
+        shell: true,
+      });
+      if (relink.status !== 0) {
+        fail(`hoisted relink failed with exit code ${relink.status}`);
+      }
+    } finally {
+      writeFileSync(workspaceYaml, originalYaml);
+    }
+    writeFileSync(hoistMarker, "hoisted by bundle-runtime\n");
+    ok("kernel node_modules relinked (hoisted, junction-free)");
+  } else {
+    ok("kernel node_modules already hoisted");
+  }
+
   // Re-stage from scratch so removed upstream files never linger.
   rmSync(kernelOut, { recursive: true, force: true });
   mkdirSync(kernelOut, { recursive: true });
@@ -158,32 +204,42 @@ if (WITH_KERNEL) {
     );
   }
   ok(`dsh kernel staged -> resources/kernel/ (~${treeSizeMb(kernelOut)} MB)`);
+} else if (MODE === "auto" && kernelPresent) {
+  ok(`kernel already staged (auto mode) — keeping resources/kernel/ (~${treeSizeMb(kernelOut)} MB)`);
 } else {
-  // Light mode keeps the (empty) kernel dir so the tauri resources mapping
-  // resolves; daemon.rs + bridge report the kernel as missing at runtime.
+  // Light mode keeps the kernel dir present (so the tauri resources mapping
+  // always resolves) but empty of runtime content; daemon.rs + bridge report
+  // the kernel as missing at runtime and turns fall back to the direct API.
   rmSync(join(kernelOut, "apps"), { recursive: true, force: true });
   rmSync(join(kernelOut, "packages"), { recursive: true, force: true });
   rmSync(join(kernelOut, "node_modules"), { recursive: true, force: true });
+  writeFileSync(
+    join(kernelOut, "KERNEL_NOT_STAGED.txt"),
+    "Light-mode build: the DeepSeek Harness kernel was not bundled.\n" +
+      "Rebuild with `pnpm run bundle:runtime -- --with-kernel` to embed it.\n",
+  );
   info("light mode: kernel NOT staged (direct-API fallback stays active)");
 }
 
 // 6. Manifest --------------------------------------------------------------
 
+const kernelBundled = MODE === "kernel" || (MODE === "auto" && kernelPresent);
+
 writeFileSync(
   join(STAGE_DIR, "kernel-manifest.json"),
   JSON.stringify(
     {
-      kernelStaged: WITH_KERNEL,
+      kernelStaged: kernelBundled,
       nodeVersion: process.version,
       stagedAt: new Date().toISOString(),
-      kernelExcludes: WITH_KERNEL ? KERNEL_EXCLUDES : [],
+      kernelExcludes: kernelBundled ? KERNEL_EXCLUDES : [],
     },
     null,
     2,
   ),
 );
 
-console.log(`\n\x1b[32m[READY] runtime staged under src-tauri/resources/ (${WITH_KERNEL ? "with" : "without"} kernel)\x1b[0m\n`);
+console.log(`\n\x1b[32m[READY] runtime staged under src-tauri/resources/ (${kernelBundled ? "with" : "without"} kernel)\x1b[0m\n`);
 
 function treeSizeMb(dir) {
   let total = 0;

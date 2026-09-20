@@ -150,7 +150,13 @@ fn bridge_paths(resource_dir: Option<PathBuf>) -> BridgePaths {
     //   <res>/kernel/            vendored deepseek-harness runtime tree
     //   <res>/cordis/atrium-sdk.cordis.patch.yml
     //   <res>/node/node.exe      bundled node runtime
-    let packaged = resource_dir.filter(|dir| dir.join("bridge/index.cjs").exists());
+    //
+    // Debug builds never take this route: `tauri dev` copies the (small) dev
+    // resources into target/debug, which would otherwise masquerade as an
+    // installed layout and point the kernel at a non-existent copy.
+    let packaged = resource_dir
+        .filter(|_| !cfg!(debug_assertions))
+        .filter(|dir| dir.join("bridge/index.cjs").exists());
 
     if let Some(res) = packaged {
         let node = env("ATRIUM_NODE_BIN").unwrap_or_else(|| res.join("node/node.exe").to_string_lossy().to_string());
@@ -173,6 +179,20 @@ fn bridge_paths(resource_dir: Option<PathBuf>) -> BridgePaths {
         dsh_root: env("ATRIUM_DSH_ROOT").unwrap_or_else(|| dsh_default.to_string_lossy().to_string()),
         patch: env("ATRIUM_KERNEL_PATCH").or_else(|| patch_default.exists().then(|| patch_default.to_string_lossy().to_string())),
         dev_root: true,
+    }
+}
+
+/// Strip the `\\?\` / `\\?\UNC\` verbatim prefix Windows APIs (and thus
+/// Tauri's path resolver) attach to returned paths. Child processes — node
+/// especially — cannot use verbatim paths as script/cwd arguments.
+fn normalize_verbatim(path: PathBuf) -> PathBuf {
+    let text = path.as_os_str().to_string_lossy();
+    if let Some(unc) = text.strip_prefix(r"\\?\UNC\") {
+        PathBuf::from(format!(r"\\{unc}"))
+    } else if let Some(plain) = text.strip_prefix(r"\\?\") {
+        PathBuf::from(plain.to_string())
+    } else {
+        path
     }
 }
 
@@ -225,8 +245,12 @@ impl DshDaemon {
             return Ok(conn);
         }
 
-        let resource_dir = tauri::Manager::path(app).resource_dir().ok();
-        let paths = bridge_paths(resource_dir);
+        let resource_dir = tauri::Manager::path(app).resource_dir().ok().map(normalize_verbatim);
+        let paths = bridge_paths(resource_dir.clone());
+        debug_log(&format!(
+            "start: resource_dir={:?} node={} script={} dsh_root={} patch={:?} dev={}",
+            resource_dir, paths.node_bin, paths.script, paths.dsh_root, paths.patch, paths.dev_root
+        ));
         if !std::path::Path::new(&paths.script).exists() {
             let msg = if paths.dev_root {
                 format!("kernel bridge script missing: {} (dev checkout incomplete?)", paths.script)
@@ -239,8 +263,9 @@ impl DshDaemon {
 
         let workspace = tauri::Manager::path(app)
             .app_config_dir()
-            .map(|d| d.to_string_lossy().to_string())
-            .ok();
+            .ok()
+            .map(normalize_verbatim)
+            .map(|d| d.to_string_lossy().to_string());
 
         let mut command = Command::new(&paths.node_bin);
         command
@@ -264,7 +289,14 @@ impl DshDaemon {
             command.creation_flags(CREATE_NO_WINDOW);
         }
 
-        let mut child = command.spawn().map_err(|e| format!("无法启动内核桥接进程 ({}): {e}", paths.node_bin))?;
+        let mut child = match command.spawn() {
+            Ok(c) => c,
+            Err(e) => {
+                debug_log(&format!("spawn FAILED: {e}"));
+                return Err(format!("无法启动内核桥接进程 ({}): {e}", paths.node_bin));
+            }
+        };
+        debug_log("spawn OK");
         let pid = child.id();
 
         // The bridge and every dsh runtime it spawns join one job object, so
@@ -401,6 +433,16 @@ fn log_stream(tag: &str, stream: impl std::io::Read + Send + 'static) {
     let reader = BufReader::new(stream);
     for line in reader.lines().map_while(Result::ok) {
         eprintln!("[{tag}] {line}");
+    }
+}
+
+/// Step-by-step daemon diagnostics to %TEMP%\atrium_daemon_debug.log — the
+/// only sink visible in packaged (windowed) runs.
+fn debug_log(line: &str) {
+    use std::io::Write;
+    let path = std::env::temp_dir().join("atrium_daemon_debug.log");
+    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+        let _ = writeln!(file, "{line}");
     }
 }
 

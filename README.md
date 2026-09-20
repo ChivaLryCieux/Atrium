@@ -75,16 +75,74 @@ pnpm run sync:upstream -- --fetch
 # 构建内核（安装并编译 vendored deepseek-harness，桥接层运行的前提）
 pnpm run prepare:kernel
 
-# 启动桌面端开发调试 (Windows Desktop)
+# 启动桌面端开发调试 (Windows Desktop，秒级增量编译)
 pnpm run tauri:dev
-
-# 构建桌面端独立发行包 (.msi / .exe)
-pnpm run bundle:runtime
-pnpm run tauri:build
 
 # 前端单独构建与类型校验
 pnpm run build
 ```
+
+打包与分发见下一节。
+
+---
+
+## 打包与分发
+
+### 两种打包形态
+
+| 形态 | 内容 | 安装包体积 | 适用场景 |
+| --- | --- | --- | --- |
+| **轻量包** | 仅内核桥接层 + 内置 Node 运行时；检测不到 dsh 内核时自动回退直连 API 通道 | ~26 MB | 自用/内部（本机已有内核检出） |
+| **完整包** | 额外内嵌完整 dsh 内核（~1.9 GB 运行树，约 27 万个文件） | 预计 ~550–750 MB（压缩后） | **分发给他人**（对方无需任何环境） |
+
+两种形态的产品功能一致：完整包让会话由 dsh 内核驱动（工具、权限、多轮上下文），轻量包走直连兜底。
+
+### 前置条件
+
+```powershell
+pnpm install
+pnpm run prepare:kernel     # 安装并构建 vendored dsh 内核（完整包必需）
+pnpm run sync:upstream      # 可选：校验内核零污染并检测上游新版本
+```
+
+### 轻量包
+
+```powershell
+pnpm tauri:build
+# 产物: src-tauri/target/release/bundle/nsis/Atrium_<版本>_x64-setup.exe
+#       src-tauri/target/release/bundle/msi/Atrium_<版本>_x64_en-US.msi
+```
+
+### 完整包（分发给他人）
+
+```powershell
+# 1. 暂存内核到打包资源目录（约 2 GB / 27 万文件，数分钟）
+pnpm run bundle:runtime -- --with-kernel
+
+# 2. 打包（附带内核资源映射，仅出 NSIS 安装器）
+pnpm tauri:build:full
+# 产物: src-tauri/target/release/bundle/nsis/Atrium_<版本>_x64-setup.exe
+```
+
+工作机制与注意事项：
+
+- **首次暂存会做一次性重链接**：内核的 pnpm 依赖默认用 NTFS junction 链接，安装器无法重建 junction，因此脚本会把 `deepseek-harness/node_modules` 重装为 hoisted 布局（真实文件）。该操作只影响未跟踪的 `node_modules`，vendored 仓库本身始终保持零污染（脚本会临时写入并在完成后立即还原 `pnpm-workspace.yaml`）。
+- **`tauri:build:full`** = `tauri build --config src-tauri/tauri.build.conf.json --bundles nsis`。`tauri.build.conf.json` 只是在一份不含内核的基础配置上**追加**内核资源映射，因此日常 `tauri:dev` 与轻量构建都不受内核体积拖累。要 MSI 就把 `--bundles nsis` 换成 `msi`（或 `all`，但压缩耗时约翻倍）。
+- **暂存模式**：`bundle:runtime` 默认是 auto 模式——已暂存内核则保留（`tauri build` 前置钩子不会把它清掉），否则按轻量暂存；用 `pnpm run bundle:runtime -- --light` 可主动清掉已暂存的内核回到轻量态。
+- **不要与 dev 并行**：暂存会向 `src-tauri/resources/` 写入几十万个文件，`tauri dev` 会监视该目录并反复重启应用，同时两边的磁盘争用会拖慢一切。请在打包完成后再启动 dev。
+- **耗时预期**：Rust 增量编译约 1–2 分钟；主要耗时在 NSIS 用 LZMA 压缩约 2 GB 数据，通常 15–25 分钟（跳过 MSI 可省掉另一遍同等压缩）。
+
+### 验证安装包
+
+```powershell
+# 启动应用后查询内核桥接状态
+curl http://127.0.0.1:19387/healthz
+```
+
+- 完整包应返回 `"kernel":"ready"`（dsh 运行时已挂载）。
+- 轻量包返回 `"kernel":"missing"`，此时 AI 请求自动走直连通道，产品仍可用。
+
+打包后的运行时会随安装包分发到应用的资源目录：`bridge/`（自包含内核桥接）、`node/`（Node 运行时）、`kernel/`（完整包才含内核本体）、`cordis/`（人格覆写补丁）。
 
 ---
 

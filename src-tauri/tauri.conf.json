@@ -34,7 +34,6 @@
       "resources/bridge": "bridge/",
       "resources/cordis": "cordis/",
       "resources/node": "node/",
-      "resources/kernel": "kernel/",
       "resources/kernel-manifest.json": "kernel-manifest.json"
     },
     "icon": [

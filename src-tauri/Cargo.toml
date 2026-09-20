@@ -30,3 +30,18 @@ uuid = { version = "1", features = ["v4"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading"] }
+
+# ── Dev 构建加速 ──────────────────────────────────────────────
+# 瓶颈在 Windows link.exe 写超大 PDB（此前 atrium_lib.lib 897MB +
+# 双 PDB 242MB）。line-tables-only 只保留行号表：保留崩溃堆栈可读性，
+# 去掉类型/变量全调试信息，链接与磁盘 IO 大幅下降。
+# NOTE: [lib] crate-type 保持 staticlib+cdylib+rlib 三重输出——Tauri
+# mobile (Android/iOS) 构建需要 staticlib/cdylib，不可裁剪为纯 rlib。
+[profile.dev]
+debug = 1
+incremental = true
+codegen-units = 256
+
+[profile.dev.build-override]
+codegen-units = 16
+debug = false
