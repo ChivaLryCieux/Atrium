@@ -12,6 +12,7 @@
     "sync:upstream": "node scripts/sync-upstream.mjs",
     "prepare:kernel": "node scripts/prepare-kernel.mjs",
     "bundle:runtime": "node scripts/bundle-runtime.mjs",
+    "build:kernel-exe": "node scripts/build-kernel-exe.mjs",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",

@@ -29,7 +29,7 @@ import { createRequire } from "node:module";
 
 const ROOT_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const STAGE_DIR = resolve(ROOT_DIR, "src-tauri/resources");
-//   --with-kernel   stage the kernel tree (distribution builds)
+//   --with-kernel   stage the packaged single-file kernel runtime
 //   --light         force the kernel out of the staged resources
 //   (default)       auto: keep an already-staged kernel, otherwise stage light
 //                   — this is what beforeBuildCommand runs, so a distribution
@@ -41,23 +41,30 @@ const MODE = process.argv.includes("--with-kernel")
     : "auto";
 
 const DSH_DIR = resolve(ROOT_DIR, "deepseek-harness");
-const DSH_BIN = join(DSH_DIR, "apps", "cli", "lib", "bin.js");
-const SDK_CLIENT = join(DSH_DIR, "packages", "sdk", "client", "lib", "index.js");
+const SDK_CLIENT_SOURCE_FALLBACK = join(DSH_DIR, "packages", "sdk", "client", "lib", "index.js");
 const BRIDGE_ENTRY = resolve(ROOT_DIR, "packages/aria-desktop-host/src/index.js");
 const CORDIS_PATCH = resolve(ROOT_DIR, "packages/aria-core/profiles/aria-desktop/atrium-sdk.cordis.patch.yml");
+// Products of `pnpm run build:kernel-exe` (upstream's single-file runtime).
+const KERNEL_DIST = resolve(ROOT_DIR, ".kernel-dist");
 
-// Kernel sub-trees that never participate in the runtime and would bloat the
-// installer; everything else under deepseek-harness/ is staged verbatim.
-const KERNEL_EXCLUDES = [
-  ".git",
-  "docs",
-  "website",
-  "benchmarks",
-  "snapshots",
-  "python",
-  "coverage",
-  "node_modules/.cache",
-];
+/**
+ * The staged single-file runtime, identified the same way `daemon.rs` does:
+ * upstream's `deepseek-harness-sdk-runtime-<platform>-<arch>.exe`, never the
+ * `-rg` ripgrep sidecar that sits beside it.
+ */
+function kernelRuntimeIn(dir) {
+  if (!existsSync(dir)) return null;
+  for (const name of readdirSync(dir)) {
+    if (
+      name.startsWith("deepseek-harness-sdk-runtime-") &&
+      name.endsWith(".exe") &&
+      !name.endsWith("-rg.exe")
+    ) {
+      return name;
+    }
+  }
+  return null;
+}
 
 function fail(message) {
   console.error(`\x1b[31m[FAIL] ${message}\x1b[0m`);
@@ -78,6 +85,39 @@ function stageDir(...parts) {
   return dir;
 }
 
+/**
+ * Robust recursive delete for staged/installed trees. Two Windows traps, both
+ * hit for real: `fs.rm` with `force: true` silently swallows the failures that
+ * long paths and locked files produce (once leaving a 200k-file kernel tree
+ * behind while the script reported "light mode"), and even a correct delete is
+ * slow because NTFS metadata work plus Defender scanning dominate. So: mirror
+ * from an empty directory with robocopy (multithreaded bulk delete) and verify.
+ */
+function removeTree(dir) {
+  if (!existsSync(dir)) return;
+  if (process.platform === "win32") {
+    const empty = join(STAGE_DIR, ".empty");
+    mkdirSync(empty, { recursive: true });
+    const mirrored = spawnSync(
+      "robocopy",
+      [empty, dir, "/MIR", "/MT:16", "/R:0", "/W:0", "/NFL", "/NDL", "/NJH", "/NJS", "/NP"],
+      { stdio: "ignore" },
+    );
+    rmSync(empty, { recursive: true, force: true });
+    if (mirrored.status === null || mirrored.status > 7) {
+      fail(`robocopy purge failed for ${dir} (code ${mirrored.status})`);
+    }
+  } else {
+    spawnSync("rm", ["-rf", dir], { stdio: "ignore" });
+  }
+  if (existsSync(dir)) {
+    const leftovers = readdirSync(dir);
+    if (leftovers.length > 0) {
+      fail(`could not clear ${dir} (${leftovers.length} entries left — files may be locked)`);
+    }
+  }
+}
+
 // 1. Preconditions ---------------------------------------------------------
 
 console.log("\x1b[36m========================================================\x1b[0m");
@@ -93,8 +133,20 @@ ok("frontend dist/ present");
 if (!existsSync(BRIDGE_ENTRY)) fail(`kernel bridge entry missing: ${BRIDGE_ENTRY}`);
 if (!existsSync(CORDIS_PATCH)) fail(`cordis patch missing: ${CORDIS_PATCH}`);
 
-if (MODE === "kernel" && !existsSync(DSH_BIN)) {
-  fail("deepseek-harness kernel is not built. Run `pnpm run prepare:kernel` first.");
+// The bridge drives the kernel through the official SDK client; bundling it
+// into the bridge keeps packaged installs free of any kernel source tree.
+const SDK_CLIENT_SOURCE = join(DSH_DIR, "packages", "sdk", "client", "lib", "index.js");
+
+if (MODE === "kernel") {
+  if (!existsSync(KERNEL_DIST)) {
+    fail(
+      `kernel runtime not built: ${KERNEL_DIST} is missing.\n` +
+        "        Run `pnpm run build:kernel-exe` first (builds upstream's single-file runtime).",
+    );
+  }
+  if (!existsSync(SDK_CLIENT_SOURCE)) {
+    fail(`SDK client source missing: ${SDK_CLIENT_SOURCE} (is the vendored checkout present?)`);
+  }
 }
 
 // 2. Bridge bundle (self-contained; `ws` is the only non-builtin import) ---
@@ -115,6 +167,23 @@ await esbuild.build({
 });
 ok("kernel bridge bundled -> resources/bridge/index.cjs");
 
+// The SDK client rides along so the packaged bridge needs no kernel checkout
+// at runtime (the dev bridge loads the checkout copy instead).
+if (existsSync(SDK_CLIENT_SOURCE)) {
+  await esbuild.build({
+    entryPoints: [SDK_CLIENT_SOURCE],
+    outfile: join(bridgeOut, "sdk-client.mjs"),
+    bundle: true,
+    platform: "node",
+    format: "esm",
+    target: "node20",
+    sourcemap: false,
+    minify: false,
+    logLevel: "silent",
+  });
+  ok("dsh SDK client bundled -> resources/bridge/sdk-client.mjs");
+}
+
 // 3. Cordis persona overlay ------------------------------------------------
 
 const cordisOut = stageDir("cordis");
@@ -132,107 +201,65 @@ if (existsSync(nodeLicense)) {
 }
 ok(`node runtime staged (${process.version})`);
 
-// 5. Kernel tree (opt-in) --------------------------------------------------
+// 5. Kernel payload (opt-in) ----------------------------------------------
+//
+// The kernel ships as upstream's packaged single-file runtime — one ~250 MB
+// executable with Node 24 and the whole closure embedded — plus its `-rg`
+// (ripgrep) sidecar, which must sit beside it with the matching `-rg` suffix.
+//
+// Copying the workspace tree instead is NOT viable: pnpm links dependencies
+// with NTFS junctions, a robocopy pass follows them, and the staged tree
+// duplicates the store into millions of files (measured: 4.4M files), which
+// also poisons `tauri dev` through the crate's dep-info. Do not reintroduce it.
 
 const kernelOut = stageDir("kernel");
-// The kernel's own CLI entry marks a fully staged runtime tree.
-const kernelPresent = existsSync(join(kernelOut, "apps", "cli", "lib", "bin.js"));
+// A staged single-file runtime marks the kernel as present.
+const kernelPresent = kernelRuntimeIn(kernelOut) !== null;
 
 if (MODE === "kernel") {
-  // pnpm's default layout links dependencies with NTFS junctions; following
-  // them during staging duplicates the store several-fold, and the NSIS/MSI
-  // extractors cannot recreate junctions anyway. Re-link with the hoisted
-  // linker (npm-style real files) so the staged tree is plain files.
-  //
-  // pnpm 11 reads `nodeLinker` only from pnpm-workspace.yaml, so the setting
-  // is appended temporarily and the tracked file restored right after — the
-  // working tree stays pollution-free; only node_modules (untracked) changes.
-  // A marker short-circuits repeat stagings while the layout stays hoisted.
-  const hoistMarker = join(DSH_DIR, "node_modules", ".atrium-hoisted");
-  const workspaceYaml = join(DSH_DIR, "pnpm-workspace.yaml");
-  if (!existsSync(hoistMarker)) {
-    info("relinking kernel node_modules with nodeLinker=hoisted (one-off)...");
-    const originalYaml = readFileSync(workspaceYaml, "utf8");
-    try {
-      const settingsYaml = originalYaml.includes("nodeLinker:")
-        ? originalYaml
-        : `${originalYaml.replace(/\s*$/, "")}\nnodeLinker: hoisted\n`;
-      writeFileSync(workspaceYaml, settingsYaml);
-      rmSync(join(DSH_DIR, "node_modules"), { recursive: true, force: true });
-      const relink = spawnSync("pnpm", ["install"], {
-        cwd: DSH_DIR,
-        stdio: "inherit",
-        shell: true,
-      });
-      if (relink.status !== 0) {
-        fail(`hoisted relink failed with exit code ${relink.status}`);
-      }
-    } finally {
-      writeFileSync(workspaceYaml, originalYaml);
-    }
-    writeFileSync(hoistMarker, "hoisted by bundle-runtime\n");
-    ok("kernel node_modules relinked (hoisted, junction-free)");
-  } else {
-    ok("kernel node_modules already hoisted");
+  const products = readdirSync(KERNEL_DIST).filter((name) => name.endsWith(".exe"));
+  const runtime = products.find((name) => !name.endsWith("-rg.exe"));
+  const sidecar = products.find((name) => name.endsWith("-rg.exe"));
+  if (runtime === undefined) fail(`no kernel runtime exe found in ${KERNEL_DIST}`);
+  if (sidecar === undefined) {
+    fail(`ripgrep sidecar (-rg.exe) missing in ${KERNEL_DIST} — the runtime requires it beside the exe`);
   }
 
-  // Re-stage from scratch so removed upstream files never linger.
-  rmSync(kernelOut, { recursive: true, force: true });
+  removeTree(kernelOut);
   mkdirSync(kernelOut, { recursive: true });
-
-  if (process.platform === "win32") {
-    // robocopy mirrors the tree fast; exit codes 0-7 are success.
-    const args = [join(DSH_DIR), kernelOut, "/E", "/MT:16", "/NFL", "/NDL", "/NJH", "/NP"];
-    for (const exclude of KERNEL_EXCLUDES) {
-      args.push("/XD", join(DSH_DIR, exclude));
-    }
-    const result = spawnSync("robocopy", args, { stdio: "ignore" });
-    if (result.status === null || result.status > 7) {
-      fail(`robocopy kernel staging failed with code ${result.status}`);
-    }
-  } else {
-    execFileSync(
-      "rsync",
-      [
-        "-a",
-        "--delete",
-        ...KERNEL_EXCLUDES.map((exclude) => `--exclude=${exclude}`),
-        `${DSH_DIR}/`,
-        `${kernelOut}/`,
-      ],
-      { stdio: "inherit" },
-    );
-  }
-  ok(`dsh kernel staged -> resources/kernel/ (~${treeSizeMb(kernelOut)} MB)`);
+  cpSync(join(KERNEL_DIST, runtime), join(kernelOut, runtime));
+  cpSync(join(KERNEL_DIST, sidecar), join(kernelOut, sidecar));
+  ok(`kernel runtime staged -> resources/kernel/ (2 files, ~${treeSizeMb(kernelOut)} MB)`);
 } else if (MODE === "auto" && kernelPresent) {
   ok(`kernel already staged (auto mode) — keeping resources/kernel/ (~${treeSizeMb(kernelOut)} MB)`);
 } else {
-  // Light mode keeps the kernel dir present (so the tauri resources mapping
-  // always resolves) but empty of runtime content; daemon.rs + bridge report
-  // the kernel as missing at runtime and turns fall back to the direct API.
-  rmSync(join(kernelOut, "apps"), { recursive: true, force: true });
-  rmSync(join(kernelOut, "packages"), { recursive: true, force: true });
-  rmSync(join(kernelOut, "node_modules"), { recursive: true, force: true });
+  // Light mode: the kernel resource is a placeholder ONLY. Leaving a previous
+  // staging here would be copied into target/debug by `tauri dev` and watched
+  // by its file watcher, so anything less than a full wipe is a hazard.
+  removeTree(kernelOut);
+  mkdirSync(kernelOut, { recursive: true });
   writeFileSync(
     join(kernelOut, "KERNEL_NOT_STAGED.txt"),
     "Light-mode build: the DeepSeek Harness kernel was not bundled.\n" +
-      "Rebuild with `pnpm run bundle:runtime -- --with-kernel` to embed it.\n",
+      "Build the runtime (`pnpm run build:kernel-exe`) and stage it with\n" +
+      "`pnpm run bundle:runtime -- --with-kernel` to embed it.\n",
   );
   info("light mode: kernel NOT staged (direct-API fallback stays active)");
 }
 
 // 6. Manifest --------------------------------------------------------------
 
-const kernelBundled = MODE === "kernel" || (MODE === "auto" && kernelPresent);
+const kernelBundled = MODE === "kernel" ? true : kernelPresent;
 
 writeFileSync(
   join(STAGE_DIR, "kernel-manifest.json"),
   JSON.stringify(
     {
       kernelStaged: kernelBundled,
+      kernelPayload: kernelBundled ? "single-file-runtime" : null,
+      kernelRuntime: kernelBundled ? kernelRuntimeIn(kernelOut) : null,
       nodeVersion: process.version,
       stagedAt: new Date().toISOString(),
-      kernelExcludes: kernelBundled ? KERNEL_EXCLUDES : [],
     },
     null,
     2,

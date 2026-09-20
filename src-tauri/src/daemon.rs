@@ -131,8 +131,29 @@ struct BridgePaths {
     script: String,
     dsh_root: String,
     patch: Option<String>,
+    /// Packaged single-file dsh runtime, passed to the bridge as
+    /// `--kernel-exe`; absent when only a source checkout is available.
+    kernel_exe: Option<String>,
     /// Dev-checkout root for reference only; None when resolved from resources.
     dev_root: bool,
+}
+
+/// The packaged single-file runtime inside the staged kernel resource, if any.
+/// Upstream names it `deepseek-harness-sdk-runtime-<platform>-<arch>.exe`; its
+/// ripgrep sidecar shares the prefix and is skipped here.
+fn kernel_exe_in(dir: &std::path::Path) -> Option<String> {
+    let entries = std::fs::read_dir(dir).ok()?;
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.starts_with("deepseek-harness-sdk-runtime-")
+            && name.ends_with(".exe")
+            && !name.ends_with("-rg.exe")
+            && entry.path().is_file()
+        {
+            return Some(entry.path().to_string_lossy().to_string());
+        }
+    }
+    None
 }
 
 fn bridge_paths(resource_dir: Option<PathBuf>) -> BridgePaths {
@@ -160,11 +181,13 @@ fn bridge_paths(resource_dir: Option<PathBuf>) -> BridgePaths {
 
     if let Some(res) = packaged {
         let node = env("ATRIUM_NODE_BIN").unwrap_or_else(|| res.join("node/node.exe").to_string_lossy().to_string());
+        let kernel_dir = res.join("kernel");
         return BridgePaths {
             node_bin: node,
             script: env("ATRIUM_BRIDGE_SCRIPT").unwrap_or_else(|| res.join("bridge/index.cjs").to_string_lossy().to_string()),
-            dsh_root: env("ATRIUM_DSH_ROOT").unwrap_or_else(|| res.join("kernel").to_string_lossy().to_string()),
+            dsh_root: env("ATRIUM_DSH_ROOT").unwrap_or_else(|| kernel_dir.to_string_lossy().to_string()),
             patch: env("ATRIUM_KERNEL_PATCH").or_else(|| res.join("cordis/atrium-sdk.cordis.patch.yml").exists().then(|| res.join("cordis/atrium-sdk.cordis.patch.yml").to_string_lossy().to_string())),
+            kernel_exe: env("ATRIUM_KERNEL_EXE").or_else(|| kernel_exe_in(&kernel_dir)),
             dev_root: false,
         };
     }
@@ -178,6 +201,9 @@ fn bridge_paths(resource_dir: Option<PathBuf>) -> BridgePaths {
         script: env("ATRIUM_BRIDGE_SCRIPT").unwrap_or_else(|| script_default.to_string_lossy().to_string()),
         dsh_root: env("ATRIUM_DSH_ROOT").unwrap_or_else(|| dsh_default.to_string_lossy().to_string()),
         patch: env("ATRIUM_KERNEL_PATCH").or_else(|| patch_default.exists().then(|| patch_default.to_string_lossy().to_string())),
+        // Dev runs use the checkout; an explicit override can point at a
+        // packaged runtime for testing.
+        kernel_exe: env("ATRIUM_KERNEL_EXE"),
         dev_root: true,
     }
 }
@@ -272,11 +298,15 @@ impl DshDaemon {
             .arg(&paths.script)
             .arg("--port").arg(port.to_string())
             .arg("--host").arg("127.0.0.1")
+            .arg("--app-version").arg(env!("CARGO_PKG_VERSION"))
             .arg("--dsh-root").arg(&paths.dsh_root)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         if let Some(patch) = &paths.patch {
             command.arg("--patch").arg(patch);
+        }
+        if let Some(kernel_exe) = &paths.kernel_exe {
+            command.arg("--kernel-exe").arg(kernel_exe);
         }
         if let Some(workspace) = &workspace {
             command.arg("--workspace").arg(workspace);

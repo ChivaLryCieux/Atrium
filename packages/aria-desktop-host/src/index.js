@@ -11,28 +11,36 @@
  *   POST /v1/reset         drop conversation → kernel session bindings
  *   WS   /events           live assistant deltas + kernel telemetry
  *
- * The dsh runtime is spawned as a child process (`dsh --profile sdk`) from the
- * vendored `deepseek-harness/` checkout; this bridge holds one runtime per
- * (provider, model, reasoning effort, credential) route and one kernel session
- * per Atrium conversation, so multi-turn context is owned by the kernel itself.
+ * The dsh runtime is spawned as a child process; this bridge holds one runtime
+ * per (provider, model, reasoning effort, credential) route and one kernel
+ * session per Atrium conversation, so multi-turn context is owned by the
+ * kernel itself. Two payloads are supported, in preference order:
+ *
+ *   1. `--kernel-exe` — the packaged single-file dsh runtime (one ~250 MB exe
+ *      with Node 24 and the whole closure embedded), driven through the SDK's
+ *      runtime-descriptor seam. This is what ships in installers.
+ *   2. a vendored `deepseek-harness` checkout run as `dsh --profile sdk`
+ *      (development and source builds).
  */
 
 import { createServer } from 'node:http'
 import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { join, resolve } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { basename, dirname, join, resolve } from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { WebSocketServer } from 'ws'
 
 // ── CLI arguments ──────────────────────────────────────────────
 
 function parseArgs(argv) {
-  const args = { port: 19387, host: '127.0.0.1', dshRoot: null, patch: [], workspace: null, dshHome: null }
+  const args = { port: 19387, host: '127.0.0.1', dshRoot: null, kernelExe: null, appVersion: null, patch: [], workspace: null, dshHome: null }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (a === '--port') args.port = Number(argv[++i])
     else if (a === '--host') args.host = argv[++i]
     else if (a === '--dsh-root') args.dshRoot = resolve(argv[++i])
+    else if (a === '--kernel-exe') args.kernelExe = resolve(argv[++i])
+    else if (a === '--app-version') args.appVersion = String(argv[++i])
     else if (a === '--patch') args.patch.push(resolve(argv[++i]))
     else if (a === '--workspace') args.workspace = resolve(argv[++i])
     else if (a === '--dsh-home') args.dshHome = resolve(argv[++i])
@@ -41,25 +49,69 @@ function parseArgs(argv) {
 }
 
 const args = parseArgs(process.argv.slice(2))
+// The shell owns the product version and passes it in, so /healthz reports the
+// build's real version instead of a fourth copy that drifts on every release.
+const APP_VERSION = args.appVersion ?? 'dev'
+
+const KERNEL_EXE = args.kernelExe
 const DSH_ROOT = args.dshRoot ?? resolve(process.cwd(), 'deepseek-harness')
 const DSH_BIN = join(DSH_ROOT, 'apps', 'cli', 'lib', 'bin.js')
-const SDK_CLIENT_ENTRY = join(DSH_ROOT, 'packages', 'sdk', 'client', 'lib', 'index.js')
+// The SDK client is bundled next to the bridge at staging time, so a packaged
+// app needs no kernel source tree at runtime; development uses the checkout.
+const SDK_CLIENT_BUNDLED = join(
+  // This module runs in two shapes: ESM source (development) and the esbuild
+  // CJS bundle (packaged), where `import.meta` does not exist.
+  typeof __dirname === 'string' ? __dirname : dirname(fileURLToPath(import.meta.url)),
+  'sdk-client.mjs',
+)
+const SDK_CLIENT_CHECKOUT = join(DSH_ROOT, 'packages', 'sdk', 'client', 'lib', 'index.js')
 const WORKSPACE = args.workspace ?? process.cwd()
 
 // ── Kernel availability ────────────────────────────────────────
 
 let kernelStatus = 'starting'
-let kernelDetail = 'resolving vendored deepseek-harness runtime'
+let kernelDetail = 'resolving DeepSeek Harness runtime'
+let kernelMode = KERNEL_EXE ? 'exe' : 'checkout'
 let DeepSeekHarness = null
+let HarnessClient = null
+
+async function loadSdkClient() {
+  const entry = existsSync(SDK_CLIENT_BUNDLED) ? SDK_CLIENT_BUNDLED : SDK_CLIENT_CHECKOUT
+  if (!existsSync(entry)) return false
+  const mod = await import(pathToFileURL(entry).href)
+  DeepSeekHarness = mod.DeepSeekHarness
+  HarnessClient = mod.HarnessClient
+  return typeof DeepSeekHarness === 'function' && typeof HarnessClient === 'function'
+}
 
 async function loadKernel() {
-  if (!existsSync(DSH_BIN) || !existsSync(SDK_CLIENT_ENTRY)) {
+  if (KERNEL_EXE) {
+    if (!existsSync(KERNEL_EXE)) {
+      kernelStatus = 'missing'
+      kernelDetail = `packaged single-file runtime missing: ${KERNEL_EXE}`
+      return false
+    }
+    try {
+      if (!(await loadSdkClient())) throw new Error('bundled SDK client entry not found')
+      kernelMode = 'exe'
+      kernelStatus = 'ready'
+      kernelDetail = `single-file dsh runtime (${basename(KERNEL_EXE)})`
+      return true
+    } catch (error) {
+      kernelStatus = 'error'
+      kernelDetail = `failed to load bundled dsh SDK client: ${error?.message ?? error}`
+      return false
+    }
+  }
+
+  if (!existsSync(DSH_BIN) || !existsSync(SDK_CLIENT_CHECKOUT)) {
     kernelStatus = 'missing'
     kernelDetail = 'deepseek-harness is not built yet — run `pnpm run prepare:kernel`'
     return false
   }
   try {
-    ({ DeepSeekHarness } = await import(pathToFileURL(SDK_CLIENT_ENTRY).href))
+    await loadSdkClient()
+    kernelMode = 'checkout'
     kernelStatus = 'ready'
     kernelDetail = 'vendored dsh runtime resolved'
     return true
@@ -124,6 +176,51 @@ function routeKey(request) {
   ].join('|')
 }
 
+/**
+ * Build the harness for one route. The packaged single-file runtime is driven
+ * through the SDK's runtime-descriptor seam — `HarnessClient`'s optional second
+ * argument — which is the supported way to launch a kernel payload that is not
+ * a Node script; development boots the checkout's `dsh --profile sdk` instead.
+ */
+function createHarness(request, childEnv, workspace) {
+  const shared = {
+    cwd: workspace,
+    processCwd: workspace,
+    provider: request.provider ?? 'deepseek-official',
+    model: request.model ?? 'deepseek-flash',
+    ...(request.reasoningEffort ? { reasoningEffort: request.reasoningEffort } : {}),
+    initializeTimeoutMs: 60_000,
+  }
+
+  if (kernelMode === 'exe') {
+    const cliArgs = ['--profile', 'sdk']
+    for (const patch of args.patch) cliArgs.push('--patch', patch)
+    return new DeepSeekHarness(
+      shared,
+      () =>
+        new HarnessClient(
+          {},
+          {
+            command: KERNEL_EXE,
+            args: cliArgs,
+            cwd: workspace,
+            environment: () => childEnv,
+            description: 'atrium dsh single-file runtime',
+            initializeTimeoutMs: 60_000,
+          },
+        ),
+    )
+  }
+
+  return new DeepSeekHarness({
+    ...shared,
+    profile: 'sdk',
+    dshBin: DSH_BIN,
+    ...(args.patch.length > 0 ? { patches: args.patch } : {}),
+    env: childEnv,
+  })
+}
+
 async function ensureHarness(request) {
   const key = routeKey(request)
   let entry = harnessPool.get(key)
@@ -139,18 +236,7 @@ async function ensureHarness(request) {
 
   const workspace = request.workspace ?? WORKSPACE
 
-  const harness = new DeepSeekHarness({
-    profile: 'sdk',
-    dshBin: DSH_BIN,
-    ...(args.patch.length > 0 ? { patches: args.patch } : {}),
-    cwd: workspace,
-    processCwd: workspace,
-    env: childEnv,
-    provider: request.provider ?? 'deepseek-official',
-    model: request.model ?? 'deepseek-flash',
-    ...(request.reasoningEffort ? { reasoningEffort: request.reasoningEffort } : {}),
-    initializeTimeoutMs: 30_000,
-  })
+  const harness = createHarness(request, childEnv, workspace)
 
   entry = { harness, key }
   harnessPool.set(key, entry)
@@ -307,12 +393,15 @@ const httpServer = createServer(async (req, res) => {
     if (req.method === 'GET' && (url === '/healthz' || url === '/status')) {
       sendJson(res, 200, {
         service: 'Atrium Desktop Kernel Bridge',
-        version: '0.2.0',
+        version: APP_VERSION,
         status: kernelStatus === 'ready' ? 'ready' : 'degraded',
         kernel: kernelStatus,
+        kernelMode,
         detail: kernelDetail,
         dshRoot: DSH_ROOT,
         dshBin: existsSync(DSH_BIN),
+        kernelExe: KERNEL_EXE ?? null,
+        kernelExePresent: KERNEL_EXE ? existsSync(KERNEL_EXE) : false,
         port: args.port,
         pid: process.pid,
         conversations: conversations.size,
@@ -324,10 +413,13 @@ const httpServer = createServer(async (req, res) => {
     if (req.method === 'GET' && url === '/api/harness/info') {
       sendJson(res, 200, {
         harness: 'Atrium // 智役中庭',
-        kernel: 'DeepSeek Harness (vendored upstream, SDK stdio runtime)',
+        kernel: kernelMode === 'exe'
+          ? 'DeepSeek Harness (packaged single-file runtime, SDK protocol)'
+          : 'DeepSeek Harness (vendored upstream, SDK stdio runtime)',
         protocol: 'sdk.v1',
         server: 'deepseek-harness-sdk-runtime',
         profile: 'sdk',
+        payload: kernelMode,
         dshRoot: DSH_ROOT,
         url: `http://${args.host}:${args.port}`,
         wsUrl: `ws://${args.host}:${args.port}/events`,

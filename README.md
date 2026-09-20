@@ -75,8 +75,18 @@ pnpm run sync:upstream -- --fetch
 # 构建内核（安装并编译 vendored deepseek-harness，桥接层运行的前提）
 pnpm run prepare:kernel
 
+# 构建内核单文件运行时（完整包必需，产物缓存在 .kernel-dist/）
+pnpm run build:kernel-exe
+pnpm run build:kernel-exe -- --force    # 强制重建
+
+# 暂存内核（复制 2 个文件）
+pnpm run bundle:runtime -- --with-kernel
+
 # 启动桌面端开发调试 (Windows Desktop，秒级增量编译)
 pnpm run tauri:dev
+
+# 打包完整发行包（含内核，NSIS）
+pnpm tauri:build:full
 
 # 前端单独构建与类型校验
 pnpm run build
@@ -93,7 +103,7 @@ pnpm run build
 | 形态 | 内容 | 安装包体积 | 适用场景 |
 | --- | --- | --- | --- |
 | **轻量包** | 仅内核桥接层 + 内置 Node 运行时；检测不到 dsh 内核时自动回退直连 API 通道 | ~26 MB | 自用/内部（本机已有内核检出） |
-| **完整包** | 额外内嵌完整 dsh 内核（~1.9 GB 运行树，约 27 万个文件） | 预计 ~550–750 MB（压缩后） | **分发给他人**（对方无需任何环境） |
+| **完整包** | 额外内嵌上游的**单文件 dsh 运行时**（一个 ~250 MB 可执行文件，Node 24 与整个内核闭包已内嵌，外加 ~6 MB ripgrep sidecar） | 实测 **73 MB** | **分发给他人**（对方无需任何环境） |
 
 两种形态的产品功能一致：完整包让会话由 dsh 内核驱动（工具、权限、多轮上下文），轻量包走直连兜底。
 
@@ -101,7 +111,7 @@ pnpm run build
 
 ```powershell
 pnpm install
-pnpm run prepare:kernel     # 安装并构建 vendored dsh 内核（完整包必需）
+pnpm run prepare:kernel     # 安装并构建 vendored dsh 内核
 pnpm run sync:upstream      # 可选：校验内核零污染并检测上游新版本
 ```
 
@@ -116,21 +126,27 @@ pnpm tauri:build
 ### 完整包（分发给他人）
 
 ```powershell
-# 1. 暂存内核到打包资源目录（约 2 GB / 27 万文件，数分钟）
+# 1. 构建内核单文件运行时（约 20–40 分钟；产物缓存在 .kernel-dist/，内核未升级则跳过）
+pnpm run build:kernel-exe
+
+# 2. 暂存进打包资源目录（复制 2 个文件，秒级）
 pnpm run bundle:runtime -- --with-kernel
 
-# 2. 打包（附带内核资源映射，仅出 NSIS 安装器）
+# 3. 打包（附带内核资源映射，仅出 NSIS 安装器）
 pnpm tauri:build:full
 # 产物: src-tauri/target/release/bundle/nsis/Atrium_<版本>_x64-setup.exe
 ```
 
 工作机制与注意事项：
 
-- **首次暂存会做一次性重链接**：内核的 pnpm 依赖默认用 NTFS junction 链接，安装器无法重建 junction，因此脚本会把 `deepseek-harness/node_modules` 重装为 hoisted 布局（真实文件）。该操作只影响未跟踪的 `node_modules`，vendored 仓库本身始终保持零污染（脚本会临时写入并在完成后立即还原 `pnpm-workspace.yaml`）。
-- **`tauri:build:full`** = `tauri build --config src-tauri/tauri.build.conf.json --bundles nsis`。`tauri.build.conf.json` 只是在一份不含内核的基础配置上**追加**内核资源映射，因此日常 `tauri:dev` 与轻量构建都不受内核体积拖累。要 MSI 就把 `--bundles nsis` 换成 `msi`（或 `all`，但压缩耗时约翻倍）。
-- **暂存模式**：`bundle:runtime` 默认是 auto 模式——已暂存内核则保留（`tauri build` 前置钩子不会把它清掉），否则按轻量暂存；用 `pnpm run bundle:runtime -- --light` 可主动清掉已暂存的内核回到轻量态。
-- **不要与 dev 并行**：暂存会向 `src-tauri/resources/` 写入几十万个文件，`tauri dev` 会监视该目录并反复重启应用，同时两边的磁盘争用会拖慢一切。请在打包完成后再启动 dev。
-- **耗时预期**：Rust 增量编译约 1–2 分钟；主要耗时在 NSIS 用 LZMA 压缩约 2 GB 数据，通常 15–25 分钟（跳过 MSI 可省掉另一遍同等压缩）。
+- **内核以单文件形式分发**：`build:kernel-exe` 调用上游的 `scripts/build-exe-for-python-sdk.ts`（`@yao-pkg/pkg --sea` 模式），把 Node 24 运行时与整个 dsh 闭包打进一个可执行文件，`-rg` ripgrep sidecar 必须与之同目录。桥接层通过 SDK 的运行时刻度接口（`HarnessClient` 的 runtime descriptor）拉起它，不再需要任何内核源码树。
+- **绝不要把内核工作区树直接复制进安装包**：pnpm 用 NTFS junction 链接依赖，复制时跟随这些链接会把文件数放大到数百万（实测 440 万），既让安装包失控，也会因为崩溃的依赖清单把 `tauri dev` 拖死。
+- **构建在隔离克隆中进行**：上游的 deploy 步骤会把 workspace 包搬离检出目录（实测影响 6467 个文件），因此构建脚本总是在 `.kernel-build/` 的临时克隆里执行，vendored 仓库始终保持零污染。
+- **两处 pnpm 11 适配**：上游脚本用 CLI `--config.*` 传参，而 pnpm 11 只从 `pnpm-workspace.yaml` 读这些键，构建脚本会把 `nodeLinker: hoisted`、`ignoreScripts: true`、`verifyDepsBeforeRun: false`、`confirmModulesPurge: false` 预先写进构建克隆——否则 devDependencies 会被生产安装裁掉、崩溃的 root postinstall 会中断流水线。
+- **`tauri:build:full`** = `tauri build --config src-tauri/tauri.build.conf.json --bundles nsis`。`tauri.build.conf.json` 只是在一份不含内核的基础配置上**追加**内核资源映射，因此日常 `tauri:dev` 与轻量构建都不受内核体积拖累。要 MSI 就把 `--bundles nsis` 换成 `msi`（或 `all`，压缩耗时约翻倍）。
+- **暂存模式**：`bundle:runtime` 默认是 auto 模式——已暂存内核则保留（`tauri build` 前置钩子不会把它清掉），否则按轻量暂存；用 `pnpm run bundle:runtime -- --light` 可主动清掉已暂存的内核回到轻量态。内核 exe 变更后重跑 `-- with-kernel` 即可。
+- **不要与 dev 并行**：暂存会往 `src-tauri/resources/` 写入 255 MB 的 exe，`tauri dev` 会监视该目录并重启应用。请在打包完成后再启动 dev。
+- **耗时预期**：内核 exe 首次 20–40 分钟（之后缓存复用）；NSIS 压缩 255 MB 数据通常几分钟。远小于原来的「小时级」。
 
 ### 验证安装包
 
@@ -139,10 +155,62 @@ pnpm tauri:build:full
 curl http://127.0.0.1:19387/healthz
 ```
 
-- 完整包应返回 `"kernel":"ready"`（dsh 运行时已挂载）。
+- 完整包应返回 `"kernel":"ready"` 且 `"kernelMode":"exe"`（单文件运行时已挂载）。
 - 轻量包返回 `"kernel":"missing"`，此时 AI 请求自动走直连通道，产品仍可用。
 
-打包后的运行时会随安装包分发到应用的资源目录：`bridge/`（自包含内核桥接）、`node/`（Node 运行时）、`kernel/`（完整包才含内核本体）、`cordis/`（人格覆写补丁）。
+打包后的运行时会随安装包分发，与 `atrium.exe` 同级：`bridge/`（自包含内核桥接 + 打包进来的 SDK 客户端）、`node/`（Node 运行时，桥接自身运行所需）、`kernel/`（完整包才含内核本体：单文件 exe 与 `-rg` sidecar）、`cordis/`（人格覆写补丁）。
+
+---
+
+## 发布新版本（版本更新流程）
+
+### 1. 改版本号（共三处，缺一不可）
+
+| 文件 | 字段 |
+| --- | --- |
+| `package.json` | `version` |
+| `src-tauri/tauri.conf.json` | `version` |
+| `src-tauri/Cargo.toml` | `version` |
+
+三处必须一致，否则产物文件名（`Atrium_<版本>_x64-setup.exe`）与 `about` 信息会对不上。桥接层的 `/healthz` 版本由 Rust 在启动时传入（`CARGO_PKG_VERSION`），不需要手工同步。
+
+### 2. 判断是否需要重建内核
+
+内核 exe 的缓存记录在 `.kernel-dist/.built-from`（记录 vendored 内核的 commit）。`build:kernel-exe` 会**自动比对**：
+
+- **内核 commit 没变** → 直接复用缓存，跳到第 3 步（几秒完成）
+- **内核 commit 变了**（执行过 `sync:upstream -- --fetch` 升级了内核）→ 自动重建，约 20–40 分钟
+- 想强制重建：`pnpm run build:kernel-exe -- --force`
+
+### 3. 打包
+
+```powershell
+pnpm run bundle:runtime -- --with-kernel   # 把内核 exe 暂存进资源目录（秒级）
+pnpm tauri:build:full                      # 出完整 NSIS 安装包
+```
+
+> `tauri build` 的 `beforeBuildCommand` 会自动跑一次 `bundle:runtime`，此时是 **auto 模式**——
+> 已暂存的内核会被保留，不会被清掉。所以上面两步的顺序一定是「先 `--with-kernel` 暂存，再打包」。
+
+### 4. 验证后再分发
+
+按上一节「验证安装包」确认 `kernel: "ready"` 且 `kernelMode: "exe"`，再发出安装包。
+建议静默安装到临时目录实测一次（不污染正式环境）：
+
+```powershell
+.\Atrium_<版本>_x64-setup.exe /S /D=C:\Users\<你>\AppData\Local\Atrium-verify
+curl http://127.0.0.1:19387/healthz
+# 确认 kernel: ready 后，运行安装目录下的 uninstall.exe /S 卸载
+```
+
+### 版本更新速查
+
+```powershell
+# 改完上面三处版本号后：
+pnpm run build:kernel-exe              # 内核没升级则命中缓存（秒退）
+pnpm run bundle:runtime -- --with-kernel
+pnpm tauri:build:full
+```
 
 ---
 
