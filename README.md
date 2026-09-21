@@ -1,14 +1,14 @@
-# Atrium // 智役中庭
+# Atrium: 智役中庭
 
-> **Atrium (AI Agent Harness Terminal)** 是一个基于 **pnpm monorepo** 工程体系、DeepSeek Harness (`dsh`) 内核、Cordis 微内核架构、Rust Tauri 2 与 React 18 构建的工程级智能体装具与编排终端。优先面向 **Desktop / Windows 桌面端**，为复杂研发、推理与多模型协同任务提供严谨、可预测、高信息密度的 AI 编排能力。
+> **Atrium (AI Agent Harness)** 是一个基于 **pnpm monorepo** 工程体系、DeepSeek Harness (`dsh`) 内核、Cordis 微内核架构、Rust Tauri 2 与 React 18 构建的工程级智能体驾驭应用。优先面向 **Desktop / Windows 桌面端**，为复杂研发、推理与多模型协同任务提供严谨、可预测、高信息密度的 AI 编排能力。
 
 ---
 
 ## 核心定位
 
-Atrium 定位于与 **Codex、ZCode、Antigravity** 同类型的 **AI Agent Harness（智能体装具）** 应用：
+Atrium 定位于与 **Codex、ZCode、Antigravity** 同类型的 **AI Agent Harness（智能体驾驭）** 应用：
 - **真实内核驱动 (Real Kernel Runtime)**：桌面壳通过官方 `@deepseek-ai/dsh-sdk-client` 以 stdio JSON-RPC 拉起 vendored `deepseek-harness` 的 `dsh --profile sdk` 运行时，会话、工具与模型调度全部由 dsh 内核执行，Atrium 不再绕过内核直连 API。
-- **装具化调度 (Harness & Dispatch)**：每个智能体作为一个标准化算子槽位（Slot），支持专属凭据、模型参数与工程约束；多轮上下文由内核会话（Session）持有。
+- **驾驭化调度 (Harness & Dispatch)**：每个智能体作为一个标准化算子槽位（Slot），支持专属凭据、模型参数与工程约束；多轮上下文由内核会话（Session）持有。
 - **确定性 DAG 流水线 (Deterministic DAG Pipeline)**：多节点协同流水线（探针 Probe -> 拓展 Synthesis -> 审校 Critique）逐节点推进内核会话，节点输出以流式增量实时渲染。
 - **全向并行群测 (Parallel Concurrency)**：多智能体同态输入并列响应，用于基准对比与多样性探索。
 - **直连兜底 (Direct Fallback)**：内核不可用（未构建/无 Node）时自动回退 OpenAI 兼容直连通道，产品保持可用。
@@ -21,9 +21,11 @@ Atrium 定位于与 **Codex、ZCode、Antigravity** 同类型的 **AI Agent Harn
 
 ## 视觉与工程美学
 
-当前界面为 **ZCode 极简中性风格（1:1 Replica）**：中性灰阶画布、克制的圆角刻度（4–16px）、细分割线与聚焦态高对比描边；节点徽标与遥测标线使用等宽字体（JetBrains Mono）保留工业仪表质感。支持亮色 / 暗色 / 跟随系统三档主题与 13–15px 三档字号。
+当前界面为 **极简中性风格（1:1 Replica）**：中性灰阶画布、克制的圆角刻度（4–16px）、细分割线与聚焦态高对比描边；节点徽标与遥测标线使用等宽字体（JetBrains Mono）保留工业仪表质感。支持亮色 / 暗色 / 跟随系统三档主题与 13–15px 三档字号。
 
 项目的设计演进方向为**砼核粗野主义（Concrete Core Brutalism）**——胶片噪点覆层、纯直角结构分割线与更硬朗的装具插槽排版；其中噪点遮层等元素尚未落地，以当前极简实现为准。
+
+排版采用三款 SIL OFL 1.1 字体**本地自托管**（`public/fonts/`，随应用分发、离线可用）：西文与数字用 Linux Biolinum，中文自动回退 Noto Sans SC（思源黑体），代码与等宽遥测用 JetBrains Mono。
 
 ---
 
@@ -37,6 +39,7 @@ Atrium 定位于与 **Codex、ZCode、Antigravity** 同类型的 **AI Agent Harn
 | 内核 SDK | `@deepseek-ai/dsh-sdk-client`（stdio JSON-RPC） | 随内核检出 |
 | 桌面宿主 | Tauri 2 + Rust（edition 2021，rust-version 1.77） | 2.11 |
 | 表现层 | React 18 + TypeScript + Vite | 18.3 / 5.6 / 5.4 |
+| 排版字体 | Linux Biolinum（西文）+ Noto Sans SC 思源黑体（中文）+ JetBrains Mono（等宽），OFL 1.1 本地自托管 | 见 `public/fonts/` |
 | 嵌入式终端 | xterm.js + Rust `portable-pty` | 6.0 / 0.8 |
 | 国际化 | i18next + react-i18next | 26 / 17 |
 | 内核桥 | `@atrium/desktop-host`（esbuild 自包含 bundle + `ws`） | 0.2.0 |
@@ -142,8 +145,8 @@ pnpm run build
 
 | 形态 | 内容 | 安装包体积 | 适用场景 |
 | --- | --- | --- | --- |
-| **轻量包** | 仅内核桥接层 + 内置 Node 运行时；检测不到 dsh 内核时自动回退直连 API 通道 | ~26 MB | 自用/内部（本机已有内核检出） |
-| **完整包** | 额外内嵌上游的**单文件 dsh 运行时**（一个 ~250 MB 可执行文件，Node 24 与整个内核闭包已内嵌，外加 ~6 MB ripgrep sidecar） | 实测 **73 MB** | **分发给他人**（对方无需任何环境） |
+| **轻量包** | 仅内核桥接层 + 内置 Node 运行时；检测不到 dsh 内核时自动回退直连 API 通道 | ~35 MB（含自托管字体，预估） | 自用/内部（本机已有内核检出） |
+| **完整包** | 额外内嵌上游的**单文件 dsh 运行时**（一个 ~250 MB 可执行文件，Node 24 与整个内核闭包已内嵌，外加 ~6 MB ripgrep sidecar） | ~82 MB（含自托管字体，预估） | **分发给他人**（对方无需任何环境） |
 
 两种形态的产品功能一致：完整包让会话由 dsh 内核驱动（工具、权限、多轮上下文），轻量包走直连兜底。
 

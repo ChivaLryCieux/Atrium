@@ -7,6 +7,8 @@
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
     <link rel="icon" type="image/png" href="/logo.png" />
     <link rel="apple-touch-icon" href="/logo.png" />
+    <!-- Boot splash wordmark is monospace: preload the one font it needs -->
+    <link rel="preload" href="/fonts/JetBrainsMono-Regular.woff2" as="font" type="font/woff2" crossorigin />
     <style>
       /* Boot splash: pure static markup, visible the moment the webview paints
          and hidden by CSS as soon as React fills #root (no JS involved). */
