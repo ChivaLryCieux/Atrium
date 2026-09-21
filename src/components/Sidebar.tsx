@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Project } from "../types/chat";
 
@@ -48,7 +48,41 @@ export function Sidebar({
 }: SidebarProps) {
   const { t } = useTranslation();
   const avatarInitial = (userName || "T").trim().charAt(0).toUpperCase();
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
+
+  // Initialize expanded set with existing projects & activeProjectId
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => {
+    const initial = new Set<string>();
+    projects.forEach((p) => initial.add(p.id));
+    if (activeProjectId) initial.add(activeProjectId);
+    return initial;
+  });
+
+  // Auto-expand projects when they are first loaded
+  const initializedRef = useRef(false);
+  useEffect(() => {
+    if (!initializedRef.current && projects.length > 0) {
+      setExpandedIds((prev) => {
+        const next = new Set(prev);
+        projects.forEach((p) => next.add(p.id));
+        return next;
+      });
+      initializedRef.current = true;
+    }
+  }, [projects]);
+
+  // Expand when switching to a different project from the outside (e.g. creating a new project/session)
+  const prevActiveRef = useRef(activeProjectId);
+  useEffect(() => {
+    if (activeProjectId && activeProjectId !== prevActiveRef.current) {
+      setExpandedIds((prev) => {
+        if (prev.has(activeProjectId)) return prev;
+        const next = new Set(prev);
+        next.add(activeProjectId);
+        return next;
+      });
+      prevActiveRef.current = activeProjectId;
+    }
+  }, [activeProjectId]);
 
   const toggleExpanded = (projectId: string) => {
     setExpandedIds((prev) => {
@@ -110,7 +144,7 @@ export function Sidebar({
         {projects.length > 0 ? (
           projects.map((project) => {
             const projectTasks = tasks.filter((t) => t.projectId === project.id);
-            const expanded = expandedIds.has(project.id) || activeProjectId === project.id;
+            const expanded = expandedIds.has(project.id);
             return (
               <div key={project.id} className="project-node">
                 <div
@@ -121,7 +155,13 @@ export function Sidebar({
                   }}
                   title={project.description || project.name}
                 >
-                  <span className="project-chevron">
+                  <span
+                    className="project-chevron"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleExpanded(project.id);
+                    }}
+                  >
                     <svg
                       width="10"
                       height="10"

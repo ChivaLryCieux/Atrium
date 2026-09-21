@@ -1837,9 +1837,19 @@ button, input, textarea, select, [role="button"], a {
 .project-chevron {
   display: flex;
   align-items: center;
-  width: 12px;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
   flex-shrink: 0;
   color: var(--text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-xs);
+  transition: color 0.12s, background 0.12s;
+}
+
+.project-chevron:hover {
+  color: var(--text-primary);
+  background: var(--bg-pill-hover);
 }
 
 .project-folder-icon {
