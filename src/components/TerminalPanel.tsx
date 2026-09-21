@@ -17,6 +17,7 @@ type TerminalPanelProps = {
   terminals: TerminalSession[];
   activeId: string | null;
   cwd: string;
+  height?: number;
   onSelect: (id: string) => void;
   onCreated: (info: TerminalSession) => void;
   onClosed: (id: string, code?: number) => void;
@@ -29,6 +30,7 @@ export function TerminalPanel({
   terminals,
   activeId,
   cwd,
+  height,
   onSelect,
   onCreated,
   onClosed,
@@ -81,16 +83,21 @@ export function TerminalPanel({
       if (instancesRef.current.has(session.id)) continue;
       const el = containerRefs.current.get(session.id);
       if (!el) continue;
+      const terminalBg =
+        getComputedStyle(document.documentElement)
+          .getPropertyValue("--bg-sidebar")
+          .trim() || "#FCF9F4";
       const term = new Terminal({
         cursorBlink: true,
         cursorStyle: "bar",
         fontSize: 13,
         fontFamily: "'JetBrains Mono','Fira Code',Consolas,Menlo,monospace",
+        allowTransparency: true,
         theme: {
-          background: "#f4f4f5",
+          background: terminalBg,
           foreground: "#18181b",
           cursor: "#18181b",
-          cursorAccent: "#f4f4f5",
+          cursorAccent: terminalBg,
           selectionBackground: "rgba(24, 24, 27, 0.18)",
           selectionForeground: "#18181b",
           black: "#3f3f46",
@@ -146,6 +153,33 @@ export function TerminalPanel({
     }
   });
 
+  // Synchronize all terminal instances with current CSS variable --bg-sidebar
+  useEffect(() => {
+    const syncTheme = () => {
+      const bg =
+        getComputedStyle(document.documentElement)
+          .getPropertyValue("--bg-sidebar")
+          .trim() || "#FCF9F4";
+      for (const { term } of instancesRef.current.values()) {
+        term.options.theme = {
+          ...term.options.theme,
+          background: bg,
+          cursorAccent: bg,
+        };
+      }
+    };
+
+    syncTheme();
+
+    const observer = new MutationObserver(syncTheme);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-theme", "style", "class"],
+    });
+
+    return () => observer.disconnect();
+  }, [terminals]);
+
   // Backend output / exit events.
   useEffect(() => {
     let disposed = false;
@@ -194,6 +228,26 @@ export function TerminalPanel({
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
+  // Refit active terminal when height changes
+  useEffect(() => {
+    const id = activeId;
+    if (!id) return;
+    const entry = instancesRef.current.get(id);
+    if (!entry) return;
+    const timer = setTimeout(() => {
+      try {
+        entry.fit.fit();
+        const dims = entry.fit.proposeDimensions();
+        if (dims && dims.cols > 0) {
+          invoke("resize_terminal", { id, cols: dims.cols, rows: dims.rows }).catch(() => undefined);
+        }
+      } catch {
+        /* noop */
+      }
+    }, 20);
+    return () => clearTimeout(timer);
+  }, [height, activeId]);
+
   const titles = (() => {
     // Same cwd => same backend title: disambiguate with a counter suffix.
     const counts = new Map<string, number>();
@@ -207,7 +261,11 @@ export function TerminalPanel({
   })();
 
   return (
-    <section className="terminal-dock" aria-label={t("terminal.dockTerminal")}>
+    <section
+      className="terminal-dock"
+      aria-label={t("terminal.dockTerminal")}
+      style={height ? { height: `${height}px` } : undefined}
+    >
       <div className="terminal-dock-tabs">
         <div className="terminal-tabs-left">
           {terminals.map((term, index) => {

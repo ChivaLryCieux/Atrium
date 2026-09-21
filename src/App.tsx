@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { TopBar } from "./components/TopBar";
@@ -11,6 +11,7 @@ import { AboutDialog } from "./components/AboutDialog";
 import { GitSourceControlPanel } from "./components/GitSourceControlPanel";
 import { PromptCard } from "./components/PromptCard";
 import { TerminalPanel, TerminalSession } from "./components/TerminalPanel";
+import { PanelResizer } from "./components/PanelResizer";
 import Grainient from "./components/Grainient";
 import { createUserMessage } from "./constants/defaults";
 import {
@@ -35,6 +36,7 @@ export function App() {
   const { t } = useTranslation();
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [pendingMessages, setPendingMessages] = useState<PendingMessage[]>([]);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
@@ -57,6 +59,65 @@ export function App() {
   const [activeTerminalId, setActiveTerminalId] = useState<string | null>(null);
   const [isTerminalOpen, setIsTerminalOpen] = useState<boolean>(false);
   const [activeGitProjectId, setActiveGitProjectId] = useState<string | null>(null);
+
+  // ── Panel Resizing States (with localStorage persistence) ──
+  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
+    const saved = localStorage.getItem("atrium_sidebar_width");
+    const parsed = saved ? parseInt(saved, 10) : 250;
+    return Number.isFinite(parsed) && parsed >= 180 && parsed <= 550 ? parsed : 250;
+  });
+  const [gitPanelWidth, setGitPanelWidth] = useState<number>(() => {
+    const saved = localStorage.getItem("atrium_git_panel_width");
+    const parsed = saved ? parseInt(saved, 10) : 280;
+    return Number.isFinite(parsed) && parsed >= 200 && parsed <= 550 ? parsed : 280;
+  });
+  const [terminalHeight, setTerminalHeight] = useState<number>(() => {
+    const saved = localStorage.getItem("atrium_terminal_height");
+    const parsed = saved ? parseInt(saved, 10) : 260;
+    return Number.isFinite(parsed) && parsed >= 140 && parsed <= 600 ? parsed : 260;
+  });
+
+  const handleResizeSidebar = useCallback((delta: number) => {
+    setSidebarWidth((prev) => {
+      const maxW = Math.max(320, Math.round(window.innerWidth * 0.45));
+      const next = Math.max(180, Math.min(maxW, prev + delta));
+      localStorage.setItem("atrium_sidebar_width", next.toString());
+      return next;
+    });
+  }, []);
+
+  const handleResetSidebar = useCallback(() => {
+    setSidebarWidth(250);
+    localStorage.setItem("atrium_sidebar_width", "250");
+  }, []);
+
+  const handleResizeGitPanel = useCallback((delta: number) => {
+    setGitPanelWidth((prev) => {
+      const maxW = Math.max(320, Math.round(window.innerWidth * 0.45));
+      const next = Math.max(200, Math.min(maxW, prev + delta));
+      localStorage.setItem("atrium_git_panel_width", next.toString());
+      return next;
+    });
+  }, []);
+
+  const handleResetGitPanel = useCallback(() => {
+    setGitPanelWidth(280);
+    localStorage.setItem("atrium_git_panel_width", "280");
+  }, []);
+
+  const handleResizeTerminal = useCallback((delta: number) => {
+    setTerminalHeight((prev) => {
+      const maxH = Math.max(200, Math.round(window.innerHeight * 0.7));
+      const next = Math.max(140, Math.min(maxH, prev + delta));
+      localStorage.setItem("atrium_terminal_height", next.toString());
+      return next;
+    });
+  }, []);
+
+  const handleResetTerminal = useCallback(() => {
+    setTerminalHeight(260);
+    localStorage.setItem("atrium_terminal_height", "260");
+  }, []);
 
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const messageEndRef = useRef<HTMLDivElement | null>(null);
@@ -584,6 +645,7 @@ export function App() {
           <Sidebar
             userName={settings?.userName || "Tempsyche"}
             isCollapsed={isSidebarCollapsed}
+            width={sidebarWidth}
             onOpenSettings={() => setCurrentView("settings")}
             onOpenSouls={() => setIsSoulDialogOpen(true)}
             projects={projects}
@@ -602,127 +664,156 @@ export function App() {
             onDeleteTask={handleDeleteSession}
           />
 
-          {/* Source Control Secondary Sidebar (VS Code Style) */}
-          {activeGitProjectId && (
-            <GitSourceControlPanel
-              projectId={activeGitProjectId}
-              project={projects.find((p) => p.id === activeGitProjectId)}
-              workspacePath={workspacePath}
-              onClose={() => setActiveGitProjectId(null)}
+          {!isSidebarCollapsed && (
+            <PanelResizer
+              orientation="vertical"
+              onResize={handleResizeSidebar}
+              onReset={handleResetSidebar}
             />
           )}
 
-          {/* Center Stage Canvas */}
-          <main className="stage-container">
-            <Grainient
-              className="stage-marble-bg"
-              style={{
-                position: "absolute",
-                inset: 0,
-                width: "100%",
-                height: "100%",
-                pointerEvents: "none",
-                zIndex: 0,
-              }}
-              color1="#dfceaf"
-              color2="#D4A26A"
-              color3="#5C4A3E"
-              timeSpeed={0.8}
-              colorBalance={0}
-              warpStrength={1.2}
-              warpFrequency={8.5}
-              warpSpeed={2}
-              warpAmplitude={50}
-              blendAngle={0}
-              blendSoftness={0.05}
-              rotationAmount={500}
-              noiseScale={2}
-              grainAmount={0.1}
-              grainScale={2}
-              grainAnimated={false}
-              contrast={1.5}
-              gamma={1}
-              saturation={1}
-              centerX={0}
-              centerY={0}
-              zoom={0.9}
-            />
-            {messages.length === 0 ? (
-              /* Home / Greeting Stage */
-              <CenterHome
-                draft={draft}
-                setDraft={setDraft}
-                onSend={handleSend}
-                isSending={isSending}
-                activeProject={activeProject}
-                fallbackProjectName={workspaceName}
-                souls={souls}
-                activeSoul={activeSoulFolder}
-                onActivateSoul={handleActivateSoul}
-                models={activeProfile?.models ?? []}
-                selectedModel={selectedModel}
-                onSelectModel={setSelectedModel}
-                reasoningEffort={reasoningEffort}
-                onSelectReasoningEffort={handleSelectReasoningEffort}
-                executionMode={executionMode}
-                onSelectExecutionMode={handleSelectExecutionMode}
+          {/* Source Control Secondary Sidebar (VS Code Style) */}
+          {activeGitProjectId && (
+            <>
+              <GitSourceControlPanel
+                projectId={activeGitProjectId}
+                project={projects.find((p) => p.id === activeGitProjectId)}
+                workspacePath={workspacePath}
+                width={gitPanelWidth}
+                onClose={() => setActiveGitProjectId(null)}
               />
-            ) : (
-              /* Active Conversation View */
-              <div className="chat-conversation-view">
-                <div className="chat-message-stream">
-                  {messages.map((msg) => (
-                    <div key={msg.id} className={`message-bubble-row ${msg.role}`}>
-                      <div className="bubble-body">
-                        {msg.role === "assistant" && (
-                          <div className="speaker-header">
-                            <span className="node-badge">ATRIUM // {msg.speakerName}</span>
-                            {msg.pending && <span>{t("app.thinkingOut")}</span>}
-                          </div>
-                        )}
-                        <div style={{ whiteSpace: "pre-wrap" }}>{msg.content}</div>
-                      </div>
-                    </div>
-                  ))}
-                  <div ref={messageEndRef} />
-                </div>
+              <PanelResizer
+                orientation="vertical"
+                onResize={handleResizeGitPanel}
+                onReset={handleResetGitPanel}
+              />
+            </>
+          )}
 
-                {/* Bottom Docked Input Box in Active Chat */}
-                <div className="chat-docked-input">
-                  <PromptCard
-                    projectName={activeProject?.name?.trim() || workspaceName}
-                    projectTooltip={activeProject?.description || activeProject?.defaultDirectory || undefined}
-                    placeholder={t("home.followUpPlaceholder")}
-                    draft={draft}
-                    setDraft={setDraft}
-                    onSend={handleSend}
-                    isSending={isSending}
-                    souls={souls}
-                    activeSoul={activeSoulFolder}
-                    onActivateSoul={handleActivateSoul}
-                    models={activeProfile?.models ?? []}
-                    selectedModel={selectedModel}
-                    onSelectModel={setSelectedModel}
-                    reasoningEffort={reasoningEffort}
-                    onSelectReasoningEffort={handleSelectReasoningEffort}
-                    executionMode={executionMode}
-                    onSelectExecutionMode={handleSelectExecutionMode}
-                  />
-                </div>
-              </div>
-            )}
-            {isTerminalOpen && terminals.length > 0 && (
-              <TerminalPanel
-                terminals={terminals}
-                activeId={activeTerminalId ?? terminals[terminals.length - 1]?.id ?? null}
-                cwd={terminalCwd}
-                onSelect={setActiveTerminalId}
-                onCreated={handleTerminalCreated}
-                onClosed={handleTerminalClosed}
-                onCloseTerminal={handleCloseOneTerminal}
+          {/* Main Stage & Docked Panels Column */}
+          <div className="main-stage-column">
+            {/* Center Stage Canvas */}
+            <main className="stage-container">
+              <Grainient
+                className="stage-marble-bg"
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  width: "100%",
+                  height: "100%",
+                  pointerEvents: "none",
+                  zIndex: 0,
+                }}
+                color1="#dfceaf"
+                color2="#D4A26A"
+                color3="#5C4A3E"
+                timeSpeed={0.8}
+                colorBalance={0}
+                warpStrength={1.2}
+                warpFrequency={8.5}
+                warpSpeed={2}
+                warpAmplitude={50}
+                blendAngle={0}
+                blendSoftness={0.05}
+                rotationAmount={500}
+                noiseScale={2}
+                grainAmount={0.1}
+                grainScale={2}
+                grainAnimated={false}
+                contrast={1.5}
+                gamma={1}
+                saturation={1}
+                centerX={0}
+                centerY={0}
+                zoom={0.9}
               />
+              {messages.length === 0 ? (
+                /* Home / Greeting Stage */
+                <CenterHome
+                  draft={draft}
+                  setDraft={setDraft}
+                  onSend={handleSend}
+                  isSending={isSending}
+                  activeProject={activeProject}
+                  fallbackProjectName={workspaceName}
+                  souls={souls}
+                  activeSoul={activeSoulFolder}
+                  onActivateSoul={handleActivateSoul}
+                  models={activeProfile?.models ?? []}
+                  selectedModel={selectedModel}
+                  onSelectModel={setSelectedModel}
+                  reasoningEffort={reasoningEffort}
+                  onSelectReasoningEffort={handleSelectReasoningEffort}
+                  executionMode={executionMode}
+                  onSelectExecutionMode={handleSelectExecutionMode}
+                />
+              ) : (
+                /* Active Conversation View */
+                <div className="chat-conversation-view">
+                  <div className="chat-message-stream">
+                    {messages.map((msg) => (
+                      <div key={msg.id} className={`message-bubble-row ${msg.role}`}>
+                        <div className="bubble-body">
+                          {msg.role === "assistant" && (
+                            <div className="speaker-header">
+                              <span className="node-badge">ATRIUM // {msg.speakerName}</span>
+                              {msg.pending && <span>{t("app.thinkingOut")}</span>}
+                            </div>
+                          )}
+                          <div style={{ whiteSpace: "pre-wrap" }}>{msg.content}</div>
+                        </div>
+                      </div>
+                    ))}
+                    <div ref={messageEndRef} />
+                  </div>
+
+                  {/* Bottom Docked Input Box in Active Chat */}
+                  <div className="chat-docked-input">
+                    <PromptCard
+                      projectName={activeProject?.name?.trim() || workspaceName}
+                      projectTooltip={activeProject?.description || activeProject?.defaultDirectory || undefined}
+                      placeholder={t("home.followUpPlaceholder")}
+                      draft={draft}
+                      setDraft={setDraft}
+                      onSend={handleSend}
+                      isSending={isSending}
+                      souls={souls}
+                      activeSoul={activeSoulFolder}
+                      onActivateSoul={handleActivateSoul}
+                      models={activeProfile?.models ?? []}
+                      selectedModel={selectedModel}
+                      onSelectModel={setSelectedModel}
+                      reasoningEffort={reasoningEffort}
+                      onSelectReasoningEffort={handleSelectReasoningEffort}
+                      executionMode={executionMode}
+                      onSelectExecutionMode={handleSelectExecutionMode}
+                    />
+                  </div>
+                </div>
+              )}
+            </main>
+
+            {/* Independent Terminal Island Card */}
+            {isTerminalOpen && terminals.length > 0 && (
+              <>
+                <PanelResizer
+                  orientation="horizontal"
+                  onResize={(delta) => handleResizeTerminal(-delta)}
+                  onReset={handleResetTerminal}
+                />
+                <TerminalPanel
+                  terminals={terminals}
+                  activeId={activeTerminalId ?? terminals[terminals.length - 1]?.id ?? null}
+                  cwd={terminalCwd}
+                  height={terminalHeight}
+                  onSelect={setActiveTerminalId}
+                  onCreated={handleTerminalCreated}
+                  onClosed={handleTerminalClosed}
+                  onCloseTerminal={handleCloseOneTerminal}
+                />
+              </>
             )}
-          </main>
+          </div>
         </div>
       )}
 

@@ -24,6 +24,7 @@ type SidebarProps = {
   onNewTask: (projectId: string) => void;
   onOpenProjectSettings: (projectId: string) => void;
   onToggleGitPanel?: (projectId: string) => void;
+  width?: number;
   onSelectTask: (id: string) => void;
   onDeleteTask: (id: string) => void;
 };
@@ -31,6 +32,7 @@ type SidebarProps = {
 export function Sidebar({
   userName = "Tempsyche",
   isCollapsed,
+  width,
   onOpenSettings,
   onOpenSouls,
   projects,
@@ -96,7 +98,10 @@ export function Sidebar({
   const unassignedTasks = tasks.filter((t) => !t.projectId || !projects.some((p) => p.id === t.projectId));
 
   return (
-    <aside className={`sidebar ${isCollapsed ? "collapsed" : ""}`}>
+    <aside
+      className={`sidebar ${isCollapsed ? "collapsed" : ""}`}
+      style={!isCollapsed && width ? { width: `${width}px` } : undefined}
+    >
       {/* Top Actions: Settings above New Project */}
       <div className="sidebar-top-actions">
         <button type="button" className="action-row" onClick={onOpenSettings} title={t("sidebar.settings")}>

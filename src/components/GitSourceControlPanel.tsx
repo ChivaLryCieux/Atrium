@@ -8,6 +8,7 @@ type GitSourceControlPanelProps = {
   projectId: string;
   project?: Project | null;
   workspacePath: string;
+  width?: number;
   onClose: () => void;
 };
 
@@ -25,6 +26,7 @@ export function GitSourceControlPanel({
   projectId,
   project,
   workspacePath,
+  width,
   onClose,
 }: GitSourceControlPanelProps) {
   const { t } = useTranslation();
@@ -303,7 +305,10 @@ export function GitSourceControlPanel({
   const selectedRepo = repos.find((r) => r.info.path === selectedGraphRepoPath);
 
   return (
-    <aside className="git-control-panel">
+    <aside
+      className="git-control-panel"
+      style={width ? { width: `${width}px`, minWidth: `${width}px`, maxWidth: `${width}px` } : undefined}
+    >
       {/* ── Header ────────────────────────────────────────────── */}
       <div className="git-panel-header">
         <div className="git-panel-title">
