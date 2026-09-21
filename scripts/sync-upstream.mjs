@@ -14,7 +14,7 @@ import { resolve, join } from "node:path";
 
 const ROOT_DIR = process.cwd();
 const DSH_DIR = resolve(ROOT_DIR, "deepseek-harness");
-const ARIA_PROFILE_DIR = resolve(ROOT_DIR, "packages/aria-core/profiles/aria-desktop");
+const ATRIUM_PROFILE_DIR = resolve(ROOT_DIR, "packages/atrium-core/profiles/atrium-desktop");
 
 console.log("\x1b[36m========================================================\x1b[0m");
 console.log("\x1b[1m[ATRIUM // 智役中庭] UPSTREAM ENGINE SYNC PROTOCOL\x1b[0m");
@@ -50,18 +50,18 @@ try {
 }
 
 // 4. Validate Cordis Profile Overlay
-console.log("\n[PROFILE] Inspecting Cordis 'aria-desktop' overlay...");
-const profilePkgPath = join(ARIA_PROFILE_DIR, "package.json");
-const cordisPatchPath = join(ARIA_PROFILE_DIR, "cordis.patch.yml");
+console.log("\n[PROFILE] Inspecting Cordis 'atrium-desktop' overlay...");
+const profilePkgPath = join(ATRIUM_PROFILE_DIR, "package.json");
+const cordisPatchPath = join(ATRIUM_PROFILE_DIR, "cordis.patch.yml");
 
 if (existsSync(profilePkgPath) && existsSync(cordisPatchPath)) {
   const rawContent = readFileSync(profilePkgPath, "utf-8").replace(/^\uFEFF/, "");
   const profilePkg = JSON.parse(rawContent);
-  console.log(`\x1b[32m[PASS] Cordis profile detected: ${profilePkg.name || "aria-desktop"}\x1b[0m`);
+  console.log(`\x1b[32m[PASS] Cordis profile detected: ${profilePkg.name || "atrium-desktop"}\x1b[0m`);
   console.log(`[PROFILE] Bundles: ${(profilePkg.cordis?.bundles || []).join(", ") || "N/A"}`);
   console.log("[PROFILE] Patch configuration: cordis.patch.yml [VALID]");
 } else {
-  console.error(`\x1b[31m[FAIL] Profile package.json or cordis.patch.yml missing in ${ARIA_PROFILE_DIR}\x1b[0m`);
+  console.error(`\x1b[31m[FAIL] Profile package.json or cordis.patch.yml missing in ${ATRIUM_PROFILE_DIR}\x1b[0m`);
 }
 
 // 5. Check Remote Updates (if flag provided)

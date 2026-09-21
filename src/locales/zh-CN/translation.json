@@ -68,7 +68,7 @@
     "duplicateSuffix": "{{base}} {{n}}",
     "createFailed": "创建终端失败:",
     "writeFailed": "终端写入失败:",
-    "dockAria": "嵌入式终端"
+    "dockTerminal": "嵌入式终端"
   },
   "dialog": {
     "cancel": "取消",

@@ -478,11 +478,11 @@ process.on('message', (message) => {
 })
 
 const server = httpServer.listen(args.port, args.host, () => {
-  console.log(`[ARIA_BRIDGE] listening on http://${args.host}:${args.port} (dsh root: ${DSH_ROOT})`)
+  console.log(`[ATRIUM_BRIDGE] listening on http://${args.host}:${args.port} (dsh root: ${DSH_ROOT})`)
   void loadKernel()
 })
 
 server.on('error', (error) => {
-  console.error(`[ARIA_BRIDGE][FATAL] could not bind ${args.host}:${args.port}: ${error?.message ?? error}`)
+  console.error(`[ATRIUM_BRIDGE][FATAL] could not bind ${args.host}:${args.port}: ${error?.message ?? error}`)
   process.exit(1)
 })

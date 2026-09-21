@@ -68,7 +68,7 @@
     "duplicateSuffix": "{{base}} {{n}}",
     "createFailed": "Failed to create terminal:",
     "writeFailed": "Failed to write to terminal:",
-    "dockAria": "Embedded terminal"
+    "dockTerminal": "Embedded terminal"
   },
   "dialog": {
     "cancel": "Cancel",

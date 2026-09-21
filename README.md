@@ -1,6 +1,6 @@
 # Atrium // 智役中庭
 
-> **Atrium (AI Agent Harness Terminal)** 是一个基于 DeepSeek Harness (`dsh`) 内核、Cordis 微内核架构、Rust Tauri 2 与 React 18 构建的工程级智能体装具与编排终端。优先面向 **Desktop / Windows 桌面端**，为复杂研发、推理与多模型协同任务提供严谨、可预测、高信息密度的 AI 编排能力。
+> **Atrium (AI Agent Harness Terminal)** 是一个基于 **pnpm monorepo** 工程体系、DeepSeek Harness (`dsh`) 内核、Cordis 微内核架构、Rust Tauri 2 与 React 18 构建的工程级智能体装具与编排终端。优先面向 **Desktop / Windows 桌面端**，为复杂研发、推理与多模型协同任务提供严谨、可预测、高信息密度的 AI 编排能力。
 
 ---
 
@@ -12,16 +12,34 @@ Atrium 定位于与 **Codex、ZCode、Antigravity** 同类型的 **AI Agent Harn
 - **确定性 DAG 流水线 (Deterministic DAG Pipeline)**：多节点协同流水线（探针 Probe -> 拓展 Synthesis -> 审校 Critique）逐节点推进内核会话，节点输出以流式增量实时渲染。
 - **全向并行群测 (Parallel Concurrency)**：多智能体同态输入并列响应，用于基准对比与多样性探索。
 - **直连兜底 (Direct Fallback)**：内核不可用（未构建/无 Node）时自动回退 OpenAI 兼容直连通道，产品保持可用。
-- **Cordis 微内核扩展 (Zero-Pollution Microkernel)**：通过外置的 `@aria/dsh-plugin-desktop` 与 Cordis Profile (`aria-desktop`) 实现无侵入热插拔定制，上游 `deepseek-harness` 仓库保持 0 代码污染。
+- **Cordis 微内核扩展 (Zero-Pollution Microkernel)**：通过 Cordis Profile (`atrium-desktop`) 与有序 `--patch` 覆写文件实现无侵入热插拔定制，上游 `deepseek-harness` 仓库保持 0 代码污染。
+- **嵌入式 PTY 终端 (Embedded PTY Terminal)**：工作台底部坞接 xterm.js 终端，由 Rust 侧 `portable-pty` 驱动真实 Shell 会话，工作目录跟随当前项目。
+- **工程上下文管理 (Projects & Sessions)**：项目（默认工作目录）、多会话（与内核 Session 绑定）、Soul 人格（`SOUL.md`）三层上下文，全部本地持久化。
+- **用量计量 (Token Metering)**：token 消耗按模型与项目双维度计量，内核上报用量优先，缺失时回退本地估算。
 
 ---
 
-## 视觉与工程美学：砼核粗野主义 (Concrete Core Brutalism)
+## 视觉与工程美学
 
-Atrium 采用冷静、克制、硬核的**粗野主义（Brutalism）**与**砼核（Béton Brut）**美学：
-- **胶片颗粒与水泥噪点覆层 (Film Grain & Noise Texture)**：SVG `feTurbulence` 分形噪点遮罩，模拟工业冷钢与现浇水泥表面质感。
-- **纯直角机械装具排版 (0px Radius / Precision Geometry)**：坚固冷硬的结构分割线、等宽字体（Monospace）遥测标线与工业状态指示灯。
-- **桌面级工作台布局 (Desktop-First Ergonomics)**：为 Windows 桌面设计的多窗格装具插槽、中央执行遥测流与内核装具检查器（Harness Inspector）。
+当前界面为 **ZCode 极简中性风格（1:1 Replica）**：中性灰阶画布、克制的圆角刻度（4–16px）、细分割线与聚焦态高对比描边；节点徽标与遥测标线使用等宽字体（JetBrains Mono）保留工业仪表质感。支持亮色 / 暗色 / 跟随系统三档主题与 13–15px 三档字号。
+
+项目的设计演进方向为**砼核粗野主义（Concrete Core Brutalism）**——胶片噪点覆层、纯直角结构分割线与更硬朗的装具插槽排版；其中噪点遮层等元素尚未落地，以当前极简实现为准。
+
+---
+
+## 技术栈
+
+| 层 | 选型 | 版本 |
+| --- | --- | --- |
+| 包管理 / 工程体系 | pnpm workspace + Corepack（`packageManager` 字段锁定） | pnpm 11.7.0 |
+| 运行时 | Node（开发 ≥ 20；分发的桥接内置 Node 24 单文件运行时） | 24.19.0 |
+| AI 内核 | vendored `deepseek-harness`，以 `dsh --profile sdk` 运行（零污染检出） | 0.1.6-alpha.2 |
+| 内核 SDK | `@deepseek-ai/dsh-sdk-client`（stdio JSON-RPC） | 随内核检出 |
+| 桌面宿主 | Tauri 2 + Rust（edition 2021，rust-version 1.77） | 2.11 |
+| 表现层 | React 18 + TypeScript + Vite | 18.3 / 5.6 / 5.4 |
+| 嵌入式终端 | xterm.js + Rust `portable-pty` | 6.0 / 0.8 |
+| 国际化 | i18next + react-i18next | 26 / 17 |
+| 内核桥 | `@atrium/desktop-host`（esbuild 自包含 bundle + `ws`） | 0.2.0 |
 
 ---
 
@@ -30,10 +48,9 @@ Atrium 采用冷静、克制、硬核的**粗野主义（Brutalism）**与**砼�
 ```text
 Atrium 桌面工作台 (Desktop Host)
 ├── 表现层 (React 18 + TypeScript + Vite)
-│   ├── 胶片颗粒滤镜层 (Film Grain Overlay)
-│   ├── 算子槽位管理器 (Agent Harness Slots)
-│   ├── 执行遥测流 (Brutalist Execution Stream)
-│   ├── 装具内核遥测 (Harness Inspector)
+│   ├── 工作台布局 (TopBar / Sidebar / CenterHome / PromptCard)
+│   ├── 设置与人格 (SettingsView / SoulManagerDialog)
+│   ├── 嵌入式终端 (TerminalPanel: xterm.js + PTY)
 │   └── DSH WebSocket 流式客户端 (dshClient.ts)
 │
 ├── 宿主层 (Rust + Tauri 2.0)
@@ -43,16 +60,16 @@ Atrium 桌面工作台 (Desktop Host)
 │   └── 本地配置与状态持久化 (storage.rs)
 │
 └── 内核层 (DeepSeek Harness / Cordis Microkernel)
-    ├── 内核桥 (@aria/desktop-host: SDK stdio 运行时 + HTTP/WS 桥面)
+    ├── 内核桥 (@atrium/desktop-host: SDK stdio 运行时 + HTTP/WS 桥面)
     ├── 核心运行时 (deepseek-harness upstream) - [ZERO POLLUTION]
     ├── SDK 协议 (@deepseek-ai/dsh-sdk-client: initialize/session/prompt)
-    └── Cordis Profile (@aria/profile-desktop + cordis.patch.yml)
+    └── Cordis Profile (@atrium/profile-desktop + cordis.patch.yml)
 ```
 
 ### 内核数据流
 
 ```text
-React UI ──Tauri IPC──> Rust 编排 ──POST /v1/turn──> @aria/desktop-host
+React UI ──Tauri IPC──> Rust 编排 ──POST /v1/turn──> @atrium/desktop-host
                                                           │ DeepSeekHarness.run()
                                                           ▼
                                         dsh --profile sdk (stdio JSON-RPC 子进程)
@@ -62,10 +79,35 @@ React UI <──WS /events── 桥接广播 assistant-stream 增量 ◄──�
 
 ---
 
+## 工程结构（pnpm Monorepo）
+
+```text
+Atrium/
+├── package.json / pnpm-workspace.yaml  # 根工作区 + 全部脚本入口（pnpm 11.7.0）
+├── src/                                # 表现层（React 18 + TS + Vite）
+│   ├── components/                     #   TopBar / Sidebar / CenterHome / SettingsView / TerminalPanel ...
+│   ├── services/dshClient.ts           #   内核桥 WebSocket 流式客户端
+│   ├── locales/                        #   i18next 双语（zh-CN 默认 / en）
+│   └── types/ constants/ utils/        #   共享类型与工具
+├── packages/
+│   ├── atrium-desktop-host/            # @atrium/desktop-host：内核桥（HTTP + WS 桥面）
+│   └── atrium-core/                    # @atrium/core：Cordis Profile（profiles/atrium-desktop/）
+├── src-tauri/                          # 宿主层（Rust + Tauri 2）
+│   ├── src/daemon.rs                   #   内核桥进程托管（Windows Job Object 进程树）
+│   ├── src/orchestration.rs            #   编排路由（内核优先 + 直连兜底）
+│   ├── src/terminal.rs                 #   PTY 终端管理（portable-pty）
+│   └── resources/                      #   打包暂存资源（bridge/node/kernel/cordis，gitignore）
+├── scripts/                            # 工程脚本（内核构建 / 暂存 / 上游同步 / i18n 校验）
+├── deepseek-harness/                   # vendored 上游内核检出 —— 零污染，禁止业务改动
+└── dist/                               # 前端构建产物（gitignore）
+```
+
+---
+
 ## 常用命令
 
 ```powershell
-# 安装 monorepo 依赖
+# 安装 monorepo 依赖（Node ≥ 20，pnpm 版本由 packageManager 锁定）
 pnpm install
 
 # 检查与同步上游 deepseek-harness 引擎 (保持零污染)
@@ -92,8 +134,6 @@ pnpm tauri:build:full
 pnpm run build
 ```
 
-打包与分发见下一节。
-
 ---
 
 ## 打包与分发
@@ -110,7 +150,7 @@ pnpm run build
 ### 前置条件
 
 ```powershell
-pnpm install
+pnpm install                 # Node ≥ 20 + Corepack（pnpm 11.7.0 由 packageManager 锁定）
 pnpm run prepare:kernel     # 安装并构建 vendored dsh 内核
 pnpm run sync:upstream      # 可选：校验内核零污染并检测上游新版本
 ```
@@ -238,9 +278,11 @@ src/locales/
 * **给非技术同事的改法**：只改 `zh-CN/translation.json` / `en/translation.json` 的值，不改 key（key 一改代码就引用不到）；`{{...}}` 占位符必须原样保留。改完跑一次 `pnpm i18n:check`。
 * **不适合放进 JSON 的内容**：长文档（如宪章正文）建议后续改用 Markdown 承载；`console.error` 里的工程日志与错误码保留在代码中，只把面向操作员的提示接入 i18n。
 
+---
 
+## 内核定制宪章（Zero-Pollution）
 
 1. **绝对隔离**：`deepseek-harness/` 保持为官方纯净克隆，不在该目录内修改任何业务代码。
-2. **Profile 叠加**：内核定制通过有序 `--patch` 覆写文件（`packages/aria-core/profiles/aria-desktop/atrium-sdk.cordis.patch.yml`）声明式注入 SDK 运行时。
+2. **Profile 叠加**：内核定制通过有序 `--patch` 覆写文件（`packages/atrium-core/profiles/atrium-desktop/atrium-sdk.cordis.patch.yml`）声明式注入 SDK 运行时。
 3. **进程边界**：Atrium 与内核之间的全部交互收敛在官方 SDK 协议（initialize / session/prompt / session.event），桌面侧不做任何内核内改造。
 4. **一键同步**：运行 `pnpm run sync:upstream` 自动校验目录干净度、检测上游新 Tag 并验证 Cordis Profile 兼容性；`pnpm run prepare:kernel` 负责内核安装与构建。

@@ -193,9 +193,9 @@ fn bridge_paths(resource_dir: Option<PathBuf>) -> BridgePaths {
     }
 
     let root = dev_root.unwrap_or_default();
-    let script_default = root.join("packages/aria-desktop-host/src/index.js");
+    let script_default = root.join("packages/atrium-desktop-host/src/index.js");
     let dsh_default = root.join("deepseek-harness");
-    let patch_default = root.join("packages/aria-core/profiles/aria-desktop/atrium-sdk.cordis.patch.yml");
+    let patch_default = root.join("packages/atrium-core/profiles/atrium-desktop/atrium-sdk.cordis.patch.yml");
     BridgePaths {
         node_bin: env("ATRIUM_NODE_BIN").unwrap_or_else(|| "node".to_string()),
         script: env("ATRIUM_BRIDGE_SCRIPT").unwrap_or_else(|| script_default.to_string_lossy().to_string()),
@@ -233,7 +233,7 @@ impl DshDaemon {
         }
     }
 
-    /// Spawn the `@aria/desktop-host` kernel bridge and wait until it answers
+    /// Spawn the `@atrium/desktop-host` kernel bridge and wait until it answers
     /// `/healthz`. The bridge owns the real dsh runtime; it spawns lazily on
     /// the first turn, so startup here is fast even before the kernel boots.
     pub async fn start(&mut self, http: &reqwest::Client, app: &tauri::AppHandle) -> Result<HarnessConnection, String> {

@@ -1,11 +1,11 @@
 {
-  "name": "@aria/desktop-host",
+  "name": "@atrium/desktop-host",
   "version": "0.2.0",
   "description": "Atrium desktop kernel bridge: drives the DeepSeek Harness runtime over the SDK and exposes HTTP + WebSocket to the Tauri shell",
   "type": "module",
   "main": "src/index.js",
   "bin": {
-    "aria-desktop-host": "src/index.js"
+    "atrium-desktop-host": "src/index.js"
   },
   "dependencies": {
     "ws": "^8.21.3"

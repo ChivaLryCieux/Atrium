@@ -9,11 +9,3 @@
       port: 19387
       host: 127.0.0.1
       open: false
-
-- insert:
-    - id: aria-telemetry
-      name: '@aria/dsh-plugin'
-      config:
-        terminal: "Atrium // 智役中庭"
-        mode: "desktop"
-        harnessSlots: 8

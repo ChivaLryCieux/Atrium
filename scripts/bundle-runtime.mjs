@@ -42,8 +42,8 @@ const MODE = process.argv.includes("--with-kernel")
 
 const DSH_DIR = resolve(ROOT_DIR, "deepseek-harness");
 const SDK_CLIENT_SOURCE_FALLBACK = join(DSH_DIR, "packages", "sdk", "client", "lib", "index.js");
-const BRIDGE_ENTRY = resolve(ROOT_DIR, "packages/aria-desktop-host/src/index.js");
-const CORDIS_PATCH = resolve(ROOT_DIR, "packages/aria-core/profiles/aria-desktop/atrium-sdk.cordis.patch.yml");
+const BRIDGE_ENTRY = resolve(ROOT_DIR, "packages/atrium-desktop-host/src/index.js");
+const CORDIS_PATCH = resolve(ROOT_DIR, "packages/atrium-core/profiles/atrium-desktop/atrium-sdk.cordis.patch.yml");
 // Products of `pnpm run build:kernel-exe` (upstream's single-file runtime).
 const KERNEL_DIST = resolve(ROOT_DIR, ".kernel-dist");
 

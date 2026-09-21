@@ -207,7 +207,7 @@ export function TerminalPanel({
   })();
 
   return (
-    <section className="terminal-dock" aria-label={t("terminal.dockAria")}>
+    <section className="terminal-dock" aria-label={t("terminal.dockTerminal")}>
       <div className="terminal-dock-tabs">
         <div className="terminal-tabs-left">
           {terminals.map((term, index) => {

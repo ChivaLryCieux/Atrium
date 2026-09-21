@@ -1,7 +1,7 @@
 {
-  "name": "@aria/core",
+  "name": "@atrium/core",
   "version": "0.2.0",
-  "description": "Aria Core - Profile manifests and configuration overlays for DeepSeek Harness",
+  "description": "Atrium Core - Profile manifests and configuration overlays for DeepSeek Harness",
   "type": "module",
   "main": "src/index.ts",
   "exports": {

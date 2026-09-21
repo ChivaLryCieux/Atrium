@@ -105,7 +105,7 @@ pub fn with_stage_instruction(profile: &AiProfile, stage: &OrchestrationStage) -
 
 /// Execute the full orchestration pipeline and return the final message list.
 ///
-/// Preferred route: the Atrium kernel bridge (`@aria/desktop-host`) driving a
+/// Preferred route: the Atrium kernel bridge (`@atrium/desktop-host`) driving a
 /// real DeepSeek Harness runtime — one kernel session per conversation, so
 /// multi-turn context is owned by the kernel and replies stream to the UI
 /// over its WebSocket.

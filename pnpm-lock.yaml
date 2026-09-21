@@ -64,15 +64,13 @@ importers:
         specifier: ^5.4.11
         version: 5.4.21
 
-  packages/aria-core: {}
+  packages/atrium-core: {}
 
-  packages/aria-desktop-host:
+  packages/atrium-desktop-host:
     dependencies:
       ws:
         specifier: ^8.21.3
         version: 8.21.3
-
-  packages/aria-dsh-plugin: {}
 
 packages:
 

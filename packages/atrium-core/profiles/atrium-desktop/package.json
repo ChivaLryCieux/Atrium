@@ -1,7 +1,7 @@
-﻿{
-  "name": "@aria/profile-desktop",
+{
+  "name": "@atrium/profile-desktop",
   "version": "0.2.0",
-  "description": "Aria Desktop Profile manifest for DeepSeek Harness",
+  "description": "Atrium Desktop Profile manifest for DeepSeek Harness",
   "private": true,
   "type": "module",
   "dsh": {
