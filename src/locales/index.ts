@@ -30,7 +30,13 @@ if (!i18n.isInitialized) {
       },
       supportedLngs: SUPPORTED_LOCALES,
       fallbackLng: "zh-CN",
-      nonExplicitSupportedLngs: true,
+      // nonExplicitSupportedLngs must stay off: supportedLngs holds the
+      // regional code "zh-CN", and the flag strips codes to their language
+      // part ("zh-CN" -> "zh") before matching — every code, fallback
+      // included, is then rejected, the resolve hierarchy comes back empty
+      // and t() returns raw keys. load: "currentOnly" keeps the hierarchy
+      // exact to the shipped resource keys.
+      load: "currentOnly",
       detection: {
         order: ["localStorage", "navigator"],
         lookupLocalStorage: LOCALE_STORAGE_KEY,
