@@ -8,6 +8,7 @@ import { SettingsView } from "./components/SettingsView";
 import { ProjectDialog } from "./components/ProjectDialog";
 import { SoulManagerDialog } from "./components/SoulManagerDialog";
 import { AboutDialog } from "./components/AboutDialog";
+import { GitSourceControlPanel } from "./components/GitSourceControlPanel";
 import { PromptCard } from "./components/PromptCard";
 import { TerminalPanel, TerminalSession } from "./components/TerminalPanel";
 import { createUserMessage } from "./constants/defaults";
@@ -54,6 +55,7 @@ export function App() {
   const [terminals, setTerminals] = useState<TerminalSession[]>([]);
   const [activeTerminalId, setActiveTerminalId] = useState<string | null>(null);
   const [isTerminalOpen, setIsTerminalOpen] = useState<boolean>(false);
+  const [activeGitProjectId, setActiveGitProjectId] = useState<string | null>(null);
 
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const messageEndRef = useRef<HTMLDivElement | null>(null);
@@ -587,13 +589,27 @@ export function App() {
             tasks={sidebarTasks}
             activeTaskId={activeSessionId || undefined}
             activeProjectId={activeProjectId}
+            activeGitProjectId={activeGitProjectId}
             onSelectProject={setActiveProjectId}
             onNewProject={() => setProjectDialog({ mode: "create" })}
             onNewTask={(projectId) => handleNewTask(projectId)}
             onOpenProjectSettings={(projectId) => setProjectDialog({ mode: "edit", projectId })}
+            onToggleGitPanel={(projectId) =>
+              setActiveGitProjectId((cur) => (cur === projectId ? null : projectId))
+            }
             onSelectTask={handleSelectSession}
             onDeleteTask={handleDeleteSession}
           />
+
+          {/* Source Control Secondary Sidebar (VS Code Style) */}
+          {activeGitProjectId && (
+            <GitSourceControlPanel
+              projectId={activeGitProjectId}
+              project={projects.find((p) => p.id === activeGitProjectId)}
+              workspacePath={workspacePath}
+              onClose={() => setActiveGitProjectId(null)}
+            />
+          )}
 
           {/* Center Stage Canvas */}
           <main className="stage-container">
