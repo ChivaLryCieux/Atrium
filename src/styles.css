@@ -2111,3 +2111,152 @@ button, input, textarea, select, [role="button"], a {
   margin-bottom: 3px;
   user-select: none;
 }
+
+/* ─── Embedded terminal dock (bottom of main area) ─────────── */
+.terminal-dock {
+  border-top: 1px solid var(--border-default);
+  background: #f4f4f5;
+  height: 300px;
+  min-height: 180px;
+  max-height: 55%;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.terminal-dock-tabs {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 34px;
+  padding: 0 8px 0 4px;
+  background: #ececed;
+  border-bottom: 1px solid var(--border-default);
+  flex-shrink: 0;
+}
+
+.terminal-tabs-left {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  overflow-x: auto;
+}
+
+.terminal-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 28px;
+  padding: 0 6px 0 12px;
+  margin-top: 6px;
+  border: none;
+  border-radius: 6px 6px 0 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.terminal-tab:hover {
+  background: #e4e4e7;
+  color: var(--text-primary);
+}
+
+.terminal-tab.active {
+  background: #f4f4f5;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.terminal-tab-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #a1a1aa;
+  flex-shrink: 0;
+}
+
+.terminal-tab.active .terminal-tab-dot {
+  background: #22c55e;
+}
+
+.terminal-tab-label {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.terminal-tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+  flex-shrink: 0;
+}
+
+.terminal-tab:hover .terminal-tab-close,
+.terminal-tab.active .terminal-tab-close {
+  opacity: 1;
+}
+
+.terminal-tab-close:hover {
+  background: var(--bg-pill-hover);
+  color: var(--text-primary);
+}
+
+.terminal-tabs-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.terminal-cwd {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.terminal-tabs-actions .icon-btn {
+  color: var(--text-muted);
+}
+
+.terminal-tabs-actions .icon-btn:hover {
+  background: var(--bg-pill-hover);
+  color: var(--text-primary);
+}
+
+.terminal-dock-body {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  background: #f4f4f5;
+}
+
+.terminal-instance {
+  width: 100%;
+  height: 100%;
+  padding: 6px 8px;
+}
+
+.terminal-instance .xterm {
+  height: 100%;
+}
+
+.terminal-instance .xterm-viewport {
+  background: #f4f4f5 !important;
+}

@@ -5,6 +5,7 @@ mod messages;
 mod models;
 mod orchestration;
 mod storage;
+mod terminal;
 pub mod tokens;
 
 use std::sync::Arc;
@@ -12,6 +13,7 @@ use reqwest::Client;
 use tokio::sync::Mutex;
 use daemon::DshDaemon;
 use tauri::Manager;
+use terminal::TerminalManager;
 
 pub(crate) struct AppState {
     pub http: Client,
@@ -19,6 +21,7 @@ pub(crate) struct AppState {
     /// legitimately run for minutes; the shared client stays at 120s).
     pub kernel_http: Client,
     pub daemon: Arc<Mutex<DshDaemon>>,
+    pub terminals: TerminalManager,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -32,7 +35,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .manage(AppState { http, kernel_http, daemon })
+        .manage(AppState { http, kernel_http, daemon, terminals: TerminalManager::new() })
         .invoke_handler(tauri::generate_handler![
             commands::load_settings,
             commands::save_settings,
@@ -69,6 +72,10 @@ pub fn run() {
             commands::load_session_messages,
             commands::save_session_messages,
             commands::delete_session,
+            commands::create_terminal,
+            commands::write_terminal,
+            commands::resize_terminal,
+            commands::close_terminal,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Atrium")

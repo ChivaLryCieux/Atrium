@@ -9,6 +9,7 @@ import { ProjectDialog } from "./components/ProjectDialog";
 import { SoulManagerDialog } from "./components/SoulManagerDialog";
 import { AboutDialog } from "./components/AboutDialog";
 import { PromptCard } from "./components/PromptCard";
+import { TerminalPanel, TerminalSession } from "./components/TerminalPanel";
 import { createUserMessage } from "./constants/defaults";
 import {
   AiProfile,
@@ -47,6 +48,9 @@ export function App() {
   const [isAboutOpen, setIsAboutOpen] = useState<boolean>(false);
   const [workspacePath, setWorkspacePath] = useState<string>("");
   const [orchestrationStages, setOrchestrationStages] = useState<OrchestrationStage[]>([]);
+  const [terminals, setTerminals] = useState<TerminalSession[]>([]);
+  const [activeTerminalId, setActiveTerminalId] = useState<string | null>(null);
+  const [isTerminalOpen, setIsTerminalOpen] = useState<boolean>(false);
 
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const messageEndRef = useRef<HTMLDivElement | null>(null);
@@ -471,6 +475,51 @@ export function App() {
     }
   };
 
+  // ── Embedded terminal dock (bottom of main area) ─────────────
+  const terminalCwd = useMemo(() => {
+    return activeProject?.defaultDirectory || workspacePath || "";
+  }, [activeProject, workspacePath]);
+
+  const handleNewTerminal = () => {
+    const id = crypto.randomUUID();
+    const seed: TerminalSession = {
+      id,
+      title: "终端",
+      cwd: terminalCwd,
+    };
+    setTerminals((prev) => [...prev, seed]);
+    setActiveTerminalId(id);
+    setIsTerminalOpen(true);
+    setCurrentView("workspace");
+  };
+
+  const handleTerminalCreated = (info: TerminalSession) => {
+    setTerminals((prev) => prev.map((t) => (t.id === info.id ? info : t)));
+  };
+
+  const handleTerminalClosed = (id: string) => {
+    setTerminals((prev) => {
+      const next = prev.filter((t) => t.id !== id);
+      setActiveTerminalId((cur) => {
+        if (cur !== id) return cur;
+        return next.length > 0 ? next[next.length - 1].id : null;
+      });
+      if (next.length === 0) setIsTerminalOpen(false);
+      return next;
+    });
+  };
+
+  const handleCloseOneTerminal = async (id: string) => {
+    // Close backend first so its exit event (which also removes the tab)
+    // stays idempotent; then drop the tab locally.
+    try {
+      await invoke("close_terminal", { id });
+    } catch {
+      /* backend already reaped */
+    }
+    handleTerminalClosed(id);
+  };
+
   // ── Tasks list for sidebar from native sessions ──────────────
   const sidebarTasks: TaskSummary[] = useMemo(() => {
     return sessions.map((s) => ({
@@ -509,10 +558,7 @@ export function App() {
       <TopBar
         sidebarCollapsed={isSidebarCollapsed}
         onToggleSidebar={() => setIsSidebarCollapsed((prev) => !prev)}
-        onNewTerminal={() => {
-          setCurrentView("workspace");
-          handleNewTask();
-        }}
+        onNewTerminal={handleNewTerminal}
         onOpenAbout={() => setIsAboutOpen(true)}
       />
 
@@ -611,6 +657,17 @@ export function App() {
                   />
                 </div>
               </div>
+            )}
+            {isTerminalOpen && terminals.length > 0 && (
+              <TerminalPanel
+                terminals={terminals}
+                activeId={activeTerminalId ?? terminals[terminals.length - 1]?.id ?? null}
+                cwd={terminalCwd}
+                onSelect={setActiveTerminalId}
+                onCreated={handleTerminalCreated}
+                onClosed={handleTerminalClosed}
+                onCloseTerminal={handleCloseOneTerminal}
+              />
             )}
           </main>
         </div>
