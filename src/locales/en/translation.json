@@ -37,7 +37,8 @@
     "userProfile": "Profile & account"
   },
   "home": {
-    "greeting": "Your agents are awake",
+    "greeting": "您的智能体清醒着",
+    "greetingEn": "Your agents are lucid now",
     "placeholder": "Ask Atrium, use @ for context and / for commands",
     "followUpPlaceholder": "Ask Atrium to follow up..."
   },

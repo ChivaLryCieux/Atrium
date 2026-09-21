@@ -2,6 +2,7 @@ import React from "react";
 import { useTranslation } from "react-i18next";
 import { ExecutionMode, ProviderModel, Project, ReasoningEffort, Soul } from "../types/chat";
 import { PromptCard } from "./PromptCard";
+import TextType from "./TextType";
 
 type CenterHomeProps = {
   draft: string;
@@ -41,10 +42,27 @@ export function CenterHome({
   onSelectExecutionMode,
 }: CenterHomeProps) {
   const { t } = useTranslation();
+  const greetings = [
+    t("home.greeting"),
+    t("home.greetingEn"),
+  ];
+
   return (
     <div className="center-home">
-      {/* Greeting Heading */}
-      <h1 className="greeting-text">{t("home.greeting")}</h1>
+      {/* Greeting Heading with TextType dynamic effect */}
+      <TextType
+        as="h1"
+        className="greeting-text"
+        text={greetings}
+        typingSpeed={85}
+        pauseDuration={3800}
+        deletingSpeed={35}
+        variableSpeed={{ min: 60, max: 110 }}
+        showCursor={true}
+        cursorCharacter="_"
+        cursorBlinkDuration={0.6}
+        loop={true}
+      />
 
       <PromptCard
         projectName={activeProject?.name?.trim() || fallbackProjectName}

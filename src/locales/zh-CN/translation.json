@@ -38,6 +38,7 @@
   },
   "home": {
     "greeting": "您的智能体清醒着",
+    "greetingEn": "Your agents are lucid now",
     "placeholder": "向 Atrium 提问，使用 @ 添加上下文，使用 / 呼出指令能力",
     "followUpPlaceholder": "向 Atrium 提问，继续跟进任务..."
   },
