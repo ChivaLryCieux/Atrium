@@ -214,7 +214,31 @@ pnpm tauri:build:full
 
 ---
 
-## 上游无污染同步机制 (Zero-Pollution Sync Policy)
+## 多语言（i18n）与文案维护
+
+界面文案全部收敛到 `src/locales/`，代码里不再出现硬编码文字，产品与策划可直接改 JSON。
+
+```text
+src/locales/
+├── index.ts                    # i18next 初始化 + 语言切换 + LanguageDetector
+├── zh-CN/translation.json      # 简体中文（默认 / fallback）
+└── en/translation.json         # English
+```
+
+* **接入方式**：`import { useTranslation } from "react-i18next";` 后 `const { t } = useTranslation();`，模板里用 `t("settings.providerBtn")`；需要插值时把变量留在文案里：`t("project.dispatchCount", { count })`。
+* **命名空间**：按界面模块划分顶层 key —— `common / topbar / sidebar / home / prompt / terminal / dialog / about / souls / project / settings / app`。新增界面模块时加一层同级命名空间，不要往 `common` 里堆。
+* **语言切换**：设置 → 常规 → 界面语言，切换即时生效；选择写入 `localStorage["atrium.locale"]`，优先于系统语言。
+* **文案校验**：
+
+  ```powershell
+  pnpm i18n:check
+  ```
+
+  该脚本会检查三件事并在 CI 里可直接用（失败返回非 0）：两种语言 key 完全对齐、代码里引用的 key 必须存在、列出已定义但未被引用的 key。
+* **给非技术同事的改法**：只改 `zh-CN/translation.json` / `en/translation.json` 的值，不改 key（key 一改代码就引用不到）；`{{...}}` 占位符必须原样保留。改完跑一次 `pnpm i18n:check`。
+* **不适合放进 JSON 的内容**：长文档（如宪章正文）建议后续改用 Markdown 承载；`console.error` 里的工程日志与错误码保留在代码中，只把面向操作员的提示接入 i18n。
+
+
 
 1. **绝对隔离**：`deepseek-harness/` 保持为官方纯净克隆，不在该目录内修改任何业务代码。
 2. **Profile 叠加**：内核定制通过有序 `--patch` 覆写文件（`packages/aria-core/profiles/aria-desktop/atrium-sdk.cordis.patch.yml`）声明式注入 SDK 运行时。

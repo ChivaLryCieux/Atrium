@@ -26,8 +26,10 @@ import {
 } from "./types/chat";
 import { createPendingMessages } from "./utils/messages";
 import { dshClient } from "./services/dshClient";
+import { useTranslation } from "react-i18next";
 
 export function App() {
+  const { t } = useTranslation();
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
@@ -55,6 +57,8 @@ export function App() {
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const messageEndRef = useRef<HTMLDivElement | null>(null);
   const activeSessionIdRef = useRef<string | null>(null);
+  const tRef = useRef(t);
+  tRef.current = t;
 
   useEffect(() => {
     activeSessionIdRef.current = activeSessionId;
@@ -103,7 +107,7 @@ export function App() {
               if (cached && cached.length > 0) {
                 try {
                   const firstUser = cached.find((m) => m.role === "user");
-                  const title = firstUser ? firstUser.content.slice(0, 20) : "历史任务";
+                  const title = firstUser ? firstUser.content.slice(0, 20) : tRef.current("app.legacyTaskTitle");
                   const created = await invoke<SessionSummary>("create_session", { title });
                   await invoke("save_session_messages", {
                     sessionId: created.id,
@@ -150,7 +154,9 @@ export function App() {
       setMessages((prev) =>
         prev.map((msg) => {
           if (msg.id !== chunk.stageId || !msg.pending) return msg;
-          const isPlaceholder = msg.content === "思考中..." || msg.content.includes("正在解析推演中");
+          const isPlaceholder =
+            msg.content === tRef.current("app.thinking") ||
+            msg.content.includes(tRef.current("app.stageAnalyzing"));
           return { ...msg, content: isPlaceholder ? chunk.content! : msg.content + chunk.content! };
         })
       );
@@ -311,7 +317,7 @@ export function App() {
       setActiveSessionId(sessionId);
       setMessages(msgs || []);
     } catch (err) {
-      console.error("加载会话失败:", err);
+      console.error(t("app.loadSessionFailed"), err);
     }
   };
 
@@ -330,7 +336,7 @@ export function App() {
         }
       }
     } catch (err) {
-      console.error("删除会话失败:", err);
+      console.error(t("app.deleteSessionFailed"), err);
     }
   };
 
@@ -383,7 +389,7 @@ export function App() {
         setActiveSessionId(curSessionId);
         setSessions((prev) => [created, ...prev.filter((s) => s.id !== created.id)]);
       } catch (err) {
-        console.error("无法创建新会话:", err);
+        console.error(t("app.createSessionFailed"), err);
       }
     }
 
@@ -397,7 +403,7 @@ export function App() {
         ? orchestrationStages.map((stage) => ({
             id: stage.id,
             role: "assistant" as const,
-            content: "思考中...",
+            content: t("app.thinking"),
             speakerId: stage.profile.id,
             speakerName: `${stage.title} · ${stage.profile.name}`,
             avatar: stage.profile.avatar,
@@ -417,8 +423,8 @@ export function App() {
           if (eventStatus === "running") {
             setMessages((prev) =>
               prev.map((msg) =>
-                msg.pending && (!stageId || msg.id === stageId) && msg.content === "思考中..."
-                  ? { ...msg, content: `[${stageTitle}] 正在解析推演中...` }
+                msg.pending && (!stageId || msg.id === stageId) && msg.content === t("app.thinking")
+                  ? { ...msg, content: `[${stageTitle}] ${t("app.stageAnalyzing")}` }
                   : msg
               )
             );
@@ -463,7 +469,7 @@ export function App() {
           msg.pending
             ? {
                 ...msg,
-                content: `[调度执行异常] ${String(error)}`,
+                content: `${t("app.dispatchError")} ${String(error)}`,
                 pending: false,
                 error: true,
               }
@@ -484,7 +490,7 @@ export function App() {
     const id = crypto.randomUUID();
     const seed: TerminalSession = {
       id,
-      title: "终端",
+      title: t("terminal.fallbackTitle"),
       cwd: terminalCwd,
     };
     setTerminals((prev) => [...prev, seed]);
@@ -624,7 +630,7 @@ export function App() {
                         {msg.role === "assistant" && (
                           <div className="speaker-header">
                             <span className="node-badge">ATRIUM // {msg.speakerName}</span>
-                            {msg.pending && <span>思考生成中...</span>}
+                            {msg.pending && <span>{t("app.thinkingOut")}</span>}
                           </div>
                         )}
                         <div style={{ whiteSpace: "pre-wrap" }}>{msg.content}</div>
@@ -639,7 +645,7 @@ export function App() {
                   <PromptCard
                     projectName={activeProject?.name?.trim() || workspaceName}
                     projectTooltip={activeProject?.description || activeProject?.defaultDirectory || undefined}
-                    placeholder="向 Atrium 提问，继续跟进任务..."
+                    placeholder={t("home.followUpPlaceholder")}
                     draft={draft}
                     setDraft={setDraft}
                     onSend={handleSend}

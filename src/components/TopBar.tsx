@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { useTranslation } from "react-i18next";
 
 type TopBarProps = {
   sidebarCollapsed?: boolean;
@@ -13,6 +14,7 @@ export function TopBar({
   onNewTerminal,
   onOpenAbout,
 }: TopBarProps) {
+  const { t } = useTranslation();
   const handleMinimize = async () => {
     try {
       await invoke("minimize_window");
@@ -41,14 +43,14 @@ export function TopBar({
     <header className="top-bar" data-tauri-drag-region>
       {/* Left: Sidebar Toggle, App Logo */}
       <div className="top-bar-left">
-        <div className="app-logo-badge" title="Atrium // 智役中庭">
+        <div className="app-logo-badge" title="Atrium">
           <img src="/logo.png" alt="Atrium" className="app-logo-icon" />
         </div>
 
         <button
           type="button"
           className="icon-btn sidebar-toggle-btn"
-          title={sidebarCollapsed ? "展开侧边栏" : "折叠侧边栏"}
+          title={sidebarCollapsed ? t("sidebar.expand") : t("sidebar.collapse")}
           onClick={onToggleSidebar}
         >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -67,7 +69,7 @@ export function TopBar({
         <button
           type="button"
           className="icon-btn"
-          title="关于 Atrium / 智役宪章"
+          title={t("topbar.about")}
           onClick={onOpenAbout}
         >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -81,7 +83,7 @@ export function TopBar({
         <button
           type="button"
           className="icon-btn"
-          title="新建终端"
+          title={t("topbar.newTerminal")}
           onClick={onNewTerminal}
         >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -96,7 +98,7 @@ export function TopBar({
           <button
             type="button"
             className="win-btn minimize"
-            title="最小化"
+            title={t("topbar.minimize")}
             onClick={handleMinimize}
           >
             <svg width="11" height="11" viewBox="0 0 12 12">
@@ -106,7 +108,7 @@ export function TopBar({
           <button
             type="button"
             className="win-btn maximize"
-            title="最大化 / 还原"
+            title={t("topbar.maximizeRestore")}
             onClick={handleToggleMaximize}
           >
             <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.2">
@@ -116,7 +118,7 @@ export function TopBar({
           <button
             type="button"
             className="win-btn close"
-            title="关闭"
+            title={t("topbar.close")}
             onClick={handleClose}
           >
             <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3">

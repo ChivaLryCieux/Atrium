@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
 import { Soul } from "../types/chat";
 import { AppDialog, AppDialogRequest } from "./AppDialog";
@@ -32,6 +33,7 @@ export function SoulManagerDialog({
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [dialog, setDialog] = useState<AppDialogRequest | null>(null);
+  const { t } = useTranslation();
 
   const selected = souls.find((s) => s.folder === selectedFolder) ?? null;
 
@@ -46,7 +48,7 @@ export function SoulManagerDialog({
 
   const handleCreate = async () => {
     if (!newName.trim()) {
-      setDialog({ kind: "alert", title: "提示", message: "请先填写人格名称。", tone: "danger" });
+      setDialog({ kind: "alert", title: t("common.hint"), message: t("souls.enterNameFirst"), tone: "danger" });
       return;
     }
     try {
@@ -60,7 +62,7 @@ export function SoulManagerDialog({
       onChanged();
       setSelectedFolder(soul.folder);
     } catch (err) {
-      setDialog({ kind: "alert", title: "新建失败", message: String(err), tone: "danger" });
+      setDialog({ kind: "alert", title: t("souls.createFailed"), message: String(err), tone: "danger" });
     }
   };
 
@@ -76,9 +78,9 @@ export function SoulManagerDialog({
       });
       setDirty(false);
       onChanged();
-      setDialog({ kind: "alert", title: "提示", message: `人格「${draftName.trim()}」已保存。` });
+      setDialog({ kind: "alert", title: t("common.hint"), message: t("souls.saved", { name: draftName.trim() }) });
     } catch (err) {
-      setDialog({ kind: "alert", title: "保存失败", message: String(err), tone: "danger" });
+      setDialog({ kind: "alert", title: t("souls.saveFailed"), message: String(err), tone: "danger" });
     } finally {
       setSaving(false);
     }
@@ -89,9 +91,9 @@ export function SoulManagerDialog({
     const label = selected.name;
     setDialog({
       kind: "confirm",
-      title: "危险操作",
+      title: t("common.dangerAction"),
       tone: "danger",
-      message: `确定要删除人格「${label}」吗？其 Souls/${selected.folder}/ 目录将被移除，不可恢复。`,
+      message: t("souls.confirmDelete", { label, folder: selected.folder }),
       onConfirm: async () => {
         try {
           await invoke("delete_soul", { folder: selected.folder });
@@ -99,7 +101,7 @@ export function SoulManagerDialog({
           onDeleted(selected.folder);
           setSelectedFolder("Default");
         } catch (err) {
-          setDialog({ kind: "alert", title: "删除失败", message: String(err), tone: "danger" });
+          setDialog({ kind: "alert", title: t("souls.deleteFailed"), message: String(err), tone: "danger" });
         }
       },
     });
@@ -109,7 +111,7 @@ export function SoulManagerDialog({
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-dialog soul-dialog" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <span className="modal-title">人格管理</span>
+          <span className="modal-title">{t("souls.title")}</span>
           <button type="button" className="icon-btn" onClick={onClose}>
             ✕
           </button>
@@ -129,8 +131,8 @@ export function SoulManagerDialog({
               >
                 <span className="soul-item-name">{soul.name}</span>
                 <span className="soul-item-badges">
-                  {soul.folder === activeSoul && <span className="soul-badge active-badge">启用中</span>}
-                  {soul.isDefault && <span className="soul-badge">出厂</span>}
+                  {soul.folder === activeSoul && <span className="soul-badge active-badge">{t("souls.activating")}</span>}
+                  {soul.isDefault && <span className="soul-badge">{t("souls.factory")}</span>}
                 </span>
               </div>
             ))}
@@ -139,7 +141,7 @@ export function SoulManagerDialog({
               className={`soul-new-btn ${creating ? "active" : ""}`}
               onClick={() => setCreating(true)}
             >
-              + 新建人格
+              {t("souls.newSoul")}
             </button>
           </div>
 
@@ -148,42 +150,42 @@ export function SoulManagerDialog({
             {creating ? (
               <>
                 <div className="form-item">
-                  <label>人格名称</label>
+                  <label>{t("souls.soulName")}</label>
                   <input
                     type="text"
                     className="zcode-input"
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
-                    placeholder="例如：严谨审校员"
+                    placeholder={t("souls.namePlaceholder")}
                     autoFocus
                   />
                 </div>
                 <div className="form-item">
-                  <label>描述（可空）</label>
+                  <label>{t("souls.description")}</label>
                   <input
                     type="text"
                     className="zcode-input"
                     value={newDescription}
                     onChange={(e) => setNewDescription(e.target.value)}
-                    placeholder="这个人格的定位与用途"
+                    placeholder={t("souls.descriptionPlaceholder")}
                   />
                 </div>
                 <p className="soul-hint">
-                  创建后将在 Souls/&lt;人格&gt;/ 下生成 SOUL.md，可在右侧继续编辑人格内容。
+                  {t("souls.createdHint")}
                 </p>
                 <div className="soul-editor-actions">
                   <button type="button" className="btn-secondary" onClick={() => setCreating(false)}>
-                    取消
+                    {t("souls.cancel")}
                   </button>
                   <button type="button" className="btn-primary" disabled={!newName.trim()} onClick={handleCreate}>
-                    创建人格
+                    {t("souls.createSoul")}
                   </button>
                 </div>
               </>
             ) : selected ? (
               <>
                 <div className="form-item">
-                  <label>人格名称</label>
+                  <label>{t("souls.soulName")}</label>
                   <input
                     type="text"
                     className="zcode-input"
@@ -195,7 +197,7 @@ export function SoulManagerDialog({
                   />
                 </div>
                 <div className="form-item">
-                  <label>描述（可空）</label>
+                  <label>{t("souls.description")}</label>
                   <input
                     type="text"
                     className="zcode-input"
@@ -209,7 +211,7 @@ export function SoulManagerDialog({
                 <div className="form-item">
                   <div className="directory-header">
                     <label>SOUL.md（Souls/{selected.folder}/）</label>
-                    {dirty && <span className="soul-dirty">未保存</span>}
+                    {dirty && <span className="soul-dirty">{t("souls.unsaved")}</span>}
                   </div>
                   <textarea
                     className="soul-textarea"
@@ -227,9 +229,9 @@ export function SoulManagerDialog({
                     className="zcode-btn-danger small"
                     onClick={handleDelete}
                     disabled={selected.isDefault}
-                    title={selected.isDefault ? "默认人格不可删除" : "删除该人格"}
+                    title={selected.isDefault ? t("souls.cannotDeleteDefault") : t("souls.deleteThisSoul")}
                   >
-                    删除
+                    {t("souls.deleteSoul")}
                   </button>
                   <div style={{ flex: 1 }} />
                   <button
@@ -237,17 +239,17 @@ export function SoulManagerDialog({
                     className={`btn-secondary ${selected.folder === activeSoul ? "active" : ""}`}
                     disabled={selected.folder === activeSoul}
                     onClick={() => onActivate(selected.folder)}
-                    title="启用后，编排请求将注入该人格的 SOUL.md 内容"
+                    title={t("souls.activateHint")}
                   >
-                    {selected.folder === activeSoul ? "启用中" : "启用"}
+                    {selected.folder === activeSoul ? t("souls.activating") : t("souls.activate")}
                   </button>
                   <button type="button" className="btn-primary" disabled={saving || !dirty} onClick={handleSave}>
-                    {saving ? "保存中..." : "保存"}
+                    {saving ? t("souls.saving") : t("souls.save")}
                   </button>
                 </div>
               </>
             ) : (
-              <div className="list-empty-item">暂无人格，点击左侧「+ 新建人格」创建。</div>
+              <div className="list-empty-item">{t("souls.noSouls")}</div>
             )}
           </div>
         </div>

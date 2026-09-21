@@ -1,4 +1,5 @@
 import React from "react";
+import { useTranslation } from "react-i18next";
 import { ExecutionMode, ProviderModel, Project, ReasoningEffort, Soul } from "../types/chat";
 import { PromptCard } from "./PromptCard";
 
@@ -39,15 +40,16 @@ export function CenterHome({
   executionMode,
   onSelectExecutionMode,
 }: CenterHomeProps) {
+  const { t } = useTranslation();
   return (
     <div className="center-home">
       {/* Greeting Heading */}
-      <h1 className="greeting-text">您的智能体清醒着</h1>
+      <h1 className="greeting-text">{t("home.greeting")}</h1>
 
       <PromptCard
         projectName={activeProject?.name?.trim() || fallbackProjectName}
         projectTooltip={activeProject?.description || activeProject?.defaultDirectory || undefined}
-        placeholder="向 Atrium 提问，使用 @ 添加上下文，使用 / 呼出指令能力"
+        placeholder={t("home.placeholder")}
         draft={draft}
         setDraft={setDraft}
         onSend={onSend}

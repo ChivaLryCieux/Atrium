@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { Project, ProjectUsageStats } from "../types/chat";
@@ -12,6 +13,7 @@ type ProjectDialogProps = {
 };
 
 export function ProjectDialog({ mode, project, fallbackDirectory, onClose, onSaved }: ProjectDialogProps) {
+  const { t } = useTranslation();
   const [name, setName] = useState(project?.name ?? "");
   const [description, setDescription] = useState(project?.description ?? "");
   const [directories, setDirectories] = useState<string[]>(
@@ -34,14 +36,14 @@ export function ProjectDialog({ mode, project, fallbackDirectory, onClose, onSav
 
   const handleAddDirectory = async () => {
     try {
-      const picked = await open({ directory: true, multiple: false, title: "选择工作目录" });
+      const picked = await open({ directory: true, multiple: false, title: t("project.chooseWorkspace") });
       if (typeof picked === "string" && picked.trim()) {
         const dir = picked.trim();
         setDirectories((prev) => (prev.includes(dir) ? prev : [...prev, dir]));
         setDefaultDirectory((prev) => prev ?? dir);
       }
     } catch (err) {
-      console.error("选择目录失败:", err);
+      console.error(t("project.selectDirFailed"), err);
     }
   };
 
@@ -76,7 +78,7 @@ export function ProjectDialog({ mode, project, fallbackDirectory, onClose, onSav
       }
       onClose();
     } catch (err) {
-      console.error("保存项目失败:", err);
+      console.error(t("project.saveFailed"), err);
       setError(String(err));
     } finally {
       setSaving(false);
@@ -87,7 +89,7 @@ export function ProjectDialog({ mode, project, fallbackDirectory, onClose, onSav
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-dialog project-dialog" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <span className="modal-title">{mode === "create" ? "新建项目" : "项目设置"}</span>
+          <span className="modal-title">{mode === "create" ? t("project.newProject") : t("project.projectSettings")}</span>
           <button type="button" className="icon-btn" onClick={onClose}>
             ✕
           </button>
@@ -96,34 +98,34 @@ export function ProjectDialog({ mode, project, fallbackDirectory, onClose, onSav
         <div className="modal-body">
           {/* 基本信息 */}
           <div className="form-item">
-            <label>项目名称{mode === "create" && "（可空，缺省自动编号）"}</label>
+            <label>{mode === "create" ? t("project.projectNameCreatable") : t("project.projectName")}</label>
             <input
               type="text"
               className="zcode-input"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder={mode === "create" ? `项目` : "项目名称"}
+              placeholder={mode === "create" ? t("project.projectPlaceholderPrefix") : t("project.projectNamePlaceholder")}
               autoFocus
             />
           </div>
 
           <div className="form-item">
-            <label>描述（可空）</label>
+            <label>{t("project.description")}</label>
             <input
               type="text"
               className="zcode-input"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="例如：Atrium 桌面端研发"
+              placeholder={t("project.descriptionPlaceholder")}
             />
           </div>
 
           {/* 工作目录列表 */}
           <div className="form-item">
             <div className="directory-header">
-              <label>工作目录（可选择多个，其中一个为默认）</label>
+              <label>{t("project.directories")}</label>
               <button type="button" className="zcode-btn-secondary small" onClick={handleAddDirectory}>
-                + 添加目录
+                {t("project.addDirectory")}
               </button>
             </div>
             {directories.length > 0 ? (
@@ -137,14 +139,14 @@ export function ProjectDialog({ mode, project, fallbackDirectory, onClose, onSav
                       {dir}
                     </span>
                     {defaultDirectory === dir ? (
-                      <span className="directory-default-badge">默认</span>
+                      <span className="directory-default-badge">{t("common.default")}</span>
                     ) : (
                       <button
                         type="button"
                         className="zcode-btn-secondary small"
                         onClick={() => setDefaultDirectory(dir)}
                       >
-                        设为默认
+                        {t("common.setAsDefault")}
                       </button>
                     )}
                     <button
@@ -152,7 +154,7 @@ export function ProjectDialog({ mode, project, fallbackDirectory, onClose, onSav
                       className="icon-btn"
                       style={{ width: "20px", height: "20px", opacity: 0.6 }}
                       onClick={() => handleRemoveDirectory(dir)}
-                      title="移除目录"
+                      title={t("project.removeDir")}
                     >
                       ✕
                     </button>
@@ -161,7 +163,7 @@ export function ProjectDialog({ mode, project, fallbackDirectory, onClose, onSav
               </div>
             ) : (
               <div className="list-empty-item" style={{ marginTop: "6px" }}>
-                尚未选择工作目录，点击「+ 添加目录」选择
+                {t("project.notChosen")}
               </div>
             )}
           </div>
@@ -170,23 +172,23 @@ export function ProjectDialog({ mode, project, fallbackDirectory, onClose, onSav
           {mode === "edit" && (
             <div className="project-stats-section">
               <div className="models-list-header">
-                <span>本项目词元统计</span>
+                <span>{t("project.stats")}</span>
               </div>
               <div className="stats-metric-grid compact">
                 <div className="metric-card">
-                  <span className="metric-label">输入 Tokens</span>
+                  <span className="metric-label">{t("project.inputTokens")}</span>
                   <span className="metric-value">{stats ? stats.promptTokens.toLocaleString() : "0"}</span>
                 </div>
                 <div className="metric-card">
-                  <span className="metric-label">输出 Tokens</span>
+                  <span className="metric-label">{t("project.outputTokens")}</span>
                   <span className="metric-value">{stats ? stats.completionTokens.toLocaleString() : "0"}</span>
                 </div>
                 <div className="metric-card">
-                  <span className="metric-label">调度次数</span>
-                  <span className="metric-value">{stats ? `${stats.requestCount} 次` : "0 次"}</span>
+                  <span className="metric-label">{t("project.dispatchCount")}</span>
+                  <span className="metric-value">{stats ? t("common.timesCount", { count: stats.requestCount }) : t("common.timesCount", { count: 0 })}</span>
                 </div>
                 <div className="metric-card">
-                  <span className="metric-label">平均延迟</span>
+                  <span className="metric-label">{t("project.avgLatency")}</span>
                   <span className="metric-value">
                     {stats && stats.requestCount > 0
                       ? `${Math.round(stats.totalLatencyMs / stats.requestCount)} ms`
@@ -201,7 +203,7 @@ export function ProjectDialog({ mode, project, fallbackDirectory, onClose, onSav
                       <span className="model-title">{m.modelName}</span>
                       <span>{m.promptTokens.toLocaleString()}</span>
                       <span>{m.completionTokens.toLocaleString()}</span>
-                      <span>{m.requestCount} 次</span>
+                      <span>{t("common.timesCount", { count: m.requestCount })}</span>
                     </div>
                   ))}
                 </div>
@@ -216,10 +218,10 @@ export function ProjectDialog({ mode, project, fallbackDirectory, onClose, onSav
 
         <div className="modal-footer">
           <button type="button" className="btn-secondary" onClick={onClose}>
-            取消
+            {t("project.cancel")}
           </button>
           <button type="button" className="btn-primary" disabled={!canSave} onClick={handleSave}>
-            {saving ? "保存中..." : mode === "create" ? "创建项目" : "保存"}
+            {saving ? t("project.saving") : mode === "create" ? t("project.createProject") : t("project.save")}
           </button>
         </div>
       </div>

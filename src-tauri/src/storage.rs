@@ -522,7 +522,7 @@ pub fn ensure_souls(app: &AppHandle) -> Result<PathBuf, String> {
         write_soul_folder(
             &default_dir,
             "默认人格",
-            "Atrium 出厂默认人格",
+            "Atrium 中的智役，苏醒时被赋予的灵魂",
             DEFAULT_SOUL_BODY,
         )?;
     }

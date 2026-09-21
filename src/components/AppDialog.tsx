@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { useTranslation } from "react-i18next";
 
 export type AppDialogRequest = {
   kind: "confirm" | "alert";
@@ -16,6 +17,7 @@ type AppDialogProps = {
 };
 
 export function AppDialog({ request, onClose }: AppDialogProps) {
+  const { t } = useTranslation();
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -48,7 +50,7 @@ export function AppDialog({ request, onClose }: AppDialogProps) {
         <div className="modal-footer">
           {request.kind === "confirm" && (
             <button type="button" className="btn-secondary" onClick={onClose}>
-              {request.cancelText ?? "取消"}
+              {request.cancelText ?? t("dialog.cancel")}
             </button>
           )}
           <button
@@ -60,7 +62,7 @@ export function AppDialog({ request, onClose }: AppDialogProps) {
               action?.();
             }}
           >
-            {request.confirmText ?? (request.kind === "confirm" ? "确定" : "知道了")}
+            {request.confirmText ?? (request.kind === "confirm" ? t("dialog.confirm") : t("dialog.gotIt"))}
           </button>
         </div>
       </div>
