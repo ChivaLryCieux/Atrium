@@ -54,7 +54,7 @@ pub async fn send_chat(
     state: State<'_, crate::AppState>,
     request: ChatRequest,
 ) -> Result<ChatResponse, String> {
-    crate::ai_client::send_openai_compatible(&state.http, &request.profile, &request.messages)
+    crate::ai_client::send_chat(&state.http, &request.profile, &request.messages)
         .await
         .map_err(|err| err.to_string())
 }
@@ -243,21 +243,33 @@ pub async fn probe_provider(
     state: State<'_, crate::AppState>,
     endpoint: String,
     api_key: String,
+    api_protocol: String,
 ) -> Result<String, String> {
     let base = endpoint.trim().trim_end_matches('/');
     let base = base
         .strip_suffix("/chat/completions")
         .or_else(|| base.strip_suffix("/responses"))
+        .or_else(|| base.strip_suffix("/v1/messages"))
         .unwrap_or(base);
     if base.is_empty() {
         return Err("API 地址为空".to_string());
     }
 
-    let response = state
+    // Anthropic authenticates with x-api-key + a version header; everything
+    // else uses bearer tokens.
+    let mut request = state
         .http
         .get(format!("{base}/models"))
-        .bearer_auth(api_key.trim())
-        .timeout(std::time::Duration::from_secs(10))
+        .timeout(std::time::Duration::from_secs(10));
+    request = if api_protocol.trim() == "anthropic-messages" {
+        request
+            .header("x-api-key", api_key.trim())
+            .header("anthropic-version", "2023-06-01")
+    } else {
+        request.bearer_auth(api_key.trim())
+    };
+
+    let response = request
         .send()
         .await
         .map_err(|e| format!("无法连通 {base}: {e}"))?;

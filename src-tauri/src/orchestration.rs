@@ -4,7 +4,7 @@ use tauri::{AppHandle, Emitter};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
-use crate::ai_client::send_openai_compatible;
+use crate::ai_client::send_chat;
 use crate::daemon::DshDaemon;
 use crate::messages::to_api_messages;
 use crate::models::{
@@ -133,7 +133,20 @@ pub async fn execute(
         .filter(|m| matches!(*m, "plan" | "ask" | "auto"))
         .map(str::to_string);
 
-    let kernel_ready = {
+    // The kernel's deepseek-official provider speaks the OpenAI-compatible
+    // wire protocol only; other protocols stay on the direct route, which
+    // implements them natively (Anthropic Messages / OpenAI Responses).
+    let kernel_compatible = profiles
+        .first()
+        .map(|p| {
+            let protocol = p.api_protocol.trim();
+            protocol.is_empty() || protocol == "openai-chat"
+        })
+        .unwrap_or(false);
+
+    let kernel_ready = if !kernel_compatible {
+        false
+    } else {
         let mut guard = daemon.lock().await;
         if !guard.kernel_available() {
             // One late start attempt: the frontend may not have finished
@@ -525,7 +538,7 @@ async fn execute_dag(
 
         let timeout_fut = tokio::time::timeout(
             std::time::Duration::from_secs(60),
-            send_openai_compatible(http, &augmented_profile, &api_messages),
+            send_chat(http, &augmented_profile, &api_messages),
         );
 
         let result = match timeout_fut.await {
@@ -629,7 +642,7 @@ async fn execute_parallel(
         .iter()
         .zip(api_messages_per_profile.iter())
         .map(|(profile, api_msgs)| async move {
-            let result = send_openai_compatible(http, profile, api_msgs).await;
+            let result = send_chat(http, profile, api_msgs).await;
             (profile, result)
         })
         .collect();

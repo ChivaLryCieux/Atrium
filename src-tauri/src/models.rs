@@ -39,6 +39,10 @@ pub struct AiProfile {
     pub avatar: String,
     pub endpoint: String,
     pub api_key: String,
+    /// Wire protocol of the provider's inference endpoint:
+    /// openai-chat | openai-responses | anthropic-messages.
+    #[serde(default = "default_api_protocol")]
+    pub api_protocol: String,
     pub model: String,
     /// Models offered by this provider; `model` names the default entry.
     #[serde(default)]
@@ -73,6 +77,10 @@ pub struct AppSettings {
 
 fn default_orchestration_mode() -> String {
     "dag".to_string()
+}
+
+fn default_api_protocol() -> String {
+    "openai-chat".to_string()
 }
 
 // ─── Chat Messages ─────────────────────────────────────────────

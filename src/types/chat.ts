@@ -1,5 +1,7 @@
 import type { ThemeMode } from "../themes";
 
+import type { ApiProtocol } from "../providers/protocols";
+
 export type ProviderModel = {
   id: string;
   name: string;
@@ -13,6 +15,8 @@ export type AiProfile = {
   avatar: string;
   endpoint: string;
   apiKey: string;
+  /// Wire protocol of the provider's inference endpoint.
+  apiProtocol?: ApiProtocol | null;
   model: string;
   models: ProviderModel[];
   systemPrompt: string;

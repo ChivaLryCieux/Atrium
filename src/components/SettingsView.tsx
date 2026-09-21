@@ -5,6 +5,13 @@ import { AppSettings, AiProfile, ProviderModel, TokenMetrics } from "../types/ch
 import { AppDialog, AppDialogRequest } from "./AppDialog";
 import { default as i18n, normalizeLocale, setAppLocale, type AppLocale } from "../locales";
 import { THEMES, normalizeThemeMode, type ThemeMode } from "../themes";
+import {
+  API_PROTOCOLS,
+  deriveEndpoint,
+  resolveProfileProtocol,
+  splitBaseUrl,
+  type ApiProtocol,
+} from "../providers/protocols";
 
 type SettingsTab = "general" | "appearance" | "model" | "tokens";
 
@@ -136,6 +143,7 @@ export function SettingsView({
       const message = await invoke<string>("probe_provider", {
         endpoint: currentProfile.endpoint,
         apiKey: currentProfile.apiKey,
+        apiProtocol: resolveProfileProtocol(currentProfile.apiProtocol, currentProfile.endpoint),
       });
       showAlert(t("settings.probeOkMessage", { message }));
     } catch (err) {
@@ -515,15 +523,59 @@ export function SettingsView({
                         />
                       </div>
 
+                      {/* API protocol — drives endpoint path and wire format */}
+                      <div className="form-item">
+                        <label>{t("settings.apiProtocol")}</label>
+                        <select
+                          className="zcode-select"
+                          value={resolveProfileProtocol(currentProfile.apiProtocol, currentProfile.endpoint)}
+                          onChange={(e) => {
+                            const protocol = e.target.value as ApiProtocol;
+                            handleUpdateCurrentProfile({
+                              apiProtocol: protocol,
+                              endpoint: deriveEndpoint(splitBaseUrl(currentProfile.endpoint), protocol),
+                            });
+                          }}
+                        >
+                          {API_PROTOCOLS.map((protocol) => (
+                            <option key={protocol.id} value={protocol.id}>
+                              {t(protocol.nameKey)}
+                            </option>
+                          ))}
+                        </select>
+                        <span className="form-hint">{t("settings.apiProtocolDesc")}</span>
+                      </div>
+
+                      {/* Base URL — the endpoint with any protocol suffix stripped */}
                       <div className="form-item">
                         <label>Base URL</label>
                         <input
                           type="text"
                           className="zcode-input"
-                          value={currentProfile.endpoint}
-                          onChange={(e) => handleUpdateCurrentProfile({ endpoint: e.target.value })}
+                          value={splitBaseUrl(currentProfile.endpoint)}
+                          onChange={(e) =>
+                            handleUpdateCurrentProfile({
+                              endpoint: deriveEndpoint(
+                                e.target.value,
+                                resolveProfileProtocol(currentProfile.apiProtocol, currentProfile.endpoint),
+                              ),
+                            })
+                          }
                           placeholder="https://api.deepseek.com/v1"
                         />
+                      </div>
+
+                      {/* Inference endpoint — auto-completed, still editable */}
+                      <div className="form-item">
+                        <label>{t("settings.inferenceEndpoint")}</label>
+                        <input
+                          type="text"
+                          className="zcode-input"
+                          value={currentProfile.endpoint}
+                          onChange={(e) => handleUpdateCurrentProfile({ endpoint: e.target.value })}
+                          placeholder="https://api.deepseek.com/v1/chat/completions"
+                        />
+                        <span className="form-hint">{t("settings.endpointAutoHint")}</span>
                       </div>
 
                       <div className="form-item">

@@ -97,6 +97,7 @@ fn default_profile() -> AiProfile {
         avatar: "ATRIUM".to_string(),
         endpoint: "https://api.deepseek.com/v1/chat/completions".to_string(),
         api_key: String::new(),
+        api_protocol: "openai-chat".to_string(),
         model: "deepseek-flash".to_string(),
         models: seed_models(Some("deepseek-flash")),
         system_prompt: "你是 Atrium 智役中庭的主控智能体（Atrium Prime）。作为装具中枢，你冷静、精确、恪守事实，提供高信息密度、逻辑严谨的工程与技术分析。".to_string(),
@@ -120,6 +121,37 @@ fn normalize_settings(mut settings: AppSettings) -> AppSettings {
         if profile.model.trim().is_empty() {
             profile.model = profile.models.first().map(|m| m.name.clone()).unwrap_or_default();
         }
+        // Keep the inference endpoint in complete form (base + protocol
+        // suffix). The endpoint's existing suffix is the ground truth of
+        // what actually gets called, so it wins over the stored protocol;
+        // a bare base gets the protocol's suffix appended.
+        let endpoint = profile.endpoint.trim().trim_end_matches('/').to_string();
+        if !endpoint.is_empty() {
+            let known = if endpoint.ends_with("/v1/messages") {
+                Some("anthropic-messages")
+            } else if endpoint.ends_with("/responses") {
+                Some("openai-responses")
+            } else if endpoint.ends_with("/chat/completions") {
+                Some("openai-chat")
+            } else {
+                None
+            };
+            match known {
+                Some(protocol) => {
+                    if profile.api_protocol.trim() != protocol {
+                        profile.api_protocol = protocol.to_string();
+                    }
+                }
+                None => {
+                    let suffix = match profile.api_protocol.trim() {
+                        "anthropic-messages" => "/v1/messages",
+                        "openai-responses" => "/responses",
+                        _ => "/chat/completions",
+                    };
+                    profile.endpoint = format!("{endpoint}{suffix}");
+                }
+            }
+        }
     }
     if let Some(effort) = &settings.reasoning_effort {
         if !["off", "low", "high", "max"].contains(&effort.as_str()) {
@@ -127,7 +159,17 @@ fn normalize_settings(mut settings: AppSettings) -> AppSettings {
         }
     }
     if let Some(theme) = &settings.theme_mode {
-        if !["light", "system", "dark"].contains(&theme.as_str()) {
+        if ![
+            "pure-white",
+            "pure-black",
+            "atrium-color",
+            "system",
+            // Legacy values; the frontend migrates them to the named themes.
+            "light",
+            "dark",
+        ]
+        .contains(&theme.as_str())
+        {
             settings.theme_mode = None;
         }
     }
@@ -319,6 +361,7 @@ pub fn create_profile() -> AiProfile {
         avatar: "NODE".to_string(),
         endpoint: "https://api.deepseek.com/v1/chat/completions".to_string(),
         api_key: String::new(),
+        api_protocol: "openai-chat".to_string(),
         model: "deepseek-flash".to_string(),
         models: seed_models(Some("deepseek-flash")),
         system_prompt: "你是搭载于 Atrium 智役中庭的高效工程智能体，专注于结构化分析与解决问题。".to_string(),
