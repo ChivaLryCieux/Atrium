@@ -63,21 +63,22 @@
   --font-sans: "Linux Biolinum", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
   --font-mono: "JetBrains Mono", "Fira Code", Consolas, Menlo, monospace;
 
-  /* ZCode Light Neutral Palette */
-  --bg-app: #fcfcfd;
-  --bg-sidebar: #f7f7f8;
-  --bg-sidebar-hover: #efeff1;
-  --bg-sidebar-active: #e8e8eb;
+  /* JetBrains Clean Palette: Pure White Viewport, Off-White (米白) Cards */
+  --bg-app: #ffffff;
+  --bg-sidebar: #f6f6f8;
+  --bg-sidebar-hover: #ededf0;
+  --bg-sidebar-active: #e3e3e7;
   --bg-card: #ffffff;
   --bg-input: #ffffff;
-  --bg-pill: #f3f4f6;
-  --bg-pill-hover: #e5e7eb;
+  --bg-pill: #eeeeef;
+  --bg-pill-hover: #e3e3e6;
   --bg-pill-active: #ffffff;
+  --bg-stage-fade: rgba(246, 246, 248, 0.85);
 
   /* Borders & Dividers */
-  --border-subtle: #f0f0f2;
-  --border-default: #e5e7eb;
-  --border-strong: #d1d5db;
+  --border-subtle: #e8e8ed;
+  --border-default: #dadbe0;
+  --border-strong: #c8c9ce;
   --border-focus: #18181b;
 
   /* Typography */
@@ -168,7 +169,7 @@ button, input, textarea, select, [role="button"], a {
   height: 40px;
   padding: 0 12px;
   background-color: var(--bg-app);
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 1px solid transparent;
   user-select: none;
   z-index: 50;
 }
@@ -291,24 +292,35 @@ button, input, textarea, select, [role="button"], a {
   display: flex;
   flex: 1;
   overflow: hidden;
+  padding: 6px 8px 8px 8px;
+  gap: 8px;
+  background-color: var(--bg-app);
 }
 
-/* Left Sidebar */
+/* Left Sidebar (JetBrains Floating Card) */
 .sidebar {
   display: flex;
   flex-direction: column;
   width: 250px;
   height: 100%;
   background-color: var(--bg-sidebar);
-  border-right: 1px solid var(--border-subtle);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
   user-select: none;
-  transition: width 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: width 0.2s cubic-bezier(0.4, 0, 0.2, 1), margin-right 0.2s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.15s ease;
   overflow: hidden;
+  flex-shrink: 0;
 }
 
 .sidebar.collapsed {
   width: 0;
-  border-right: none;
+  min-width: 0;
+  border: none;
+  margin-right: -8px;
+  padding: 0;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .sidebar-top-actions {
@@ -526,7 +538,7 @@ button, input, textarea, select, [role="button"], a {
   color: var(--text-primary);
 }
 
-/* Center Stage Area */
+/* Center Stage Area (JetBrains Floating Card) */
 .stage-container {
   display: flex;
   flex-direction: column;
@@ -534,7 +546,12 @@ button, input, textarea, select, [role="button"], a {
   height: 100%;
   position: relative;
   overflow: hidden;
-  background-color: var(--bg-app);
+  background-color: var(--bg-sidebar);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+  isolation: isolate;
+  transform: translateZ(0);
 }
 
 /* Home / Empty State View */
@@ -748,6 +765,8 @@ button, input, textarea, select, [role="button"], a {
   flex: 1;
   height: 100%;
   overflow: hidden;
+  position: relative;
+  z-index: 1;
 }
 
 .chat-message-stream {
@@ -772,7 +791,7 @@ button, input, textarea, select, [role="button"], a {
 }
 
 .message-bubble-row.user .bubble-body {
-  background: #f4f4f5;
+  background: var(--bg-pill);
   color: var(--text-primary);
   border-radius: var(--radius-lg);
   padding: 10px 16px;
@@ -804,7 +823,7 @@ button, input, textarea, select, [role="button"], a {
 
 .node-badge {
   padding: 2px 6px;
-  background: #f4f4f5;
+  background: var(--bg-pill);
   border-radius: var(--radius-xs);
   font-size: 11px;
   color: #3b82f6;
@@ -815,7 +834,9 @@ button, input, textarea, select, [role="button"], a {
   display: flex;
   justify-content: center;
   padding: 16px 24px 20px;
-  background: linear-gradient(180deg, rgba(0, 0, 0, 0) 0%, var(--bg-app) 40%);
+  background: linear-gradient(180deg, transparent 0%, var(--bg-stage-fade) 50%);
+  position: relative;
+  z-index: 2;
 }
 
 /* Modal Overlay for Settings / Help */
@@ -996,6 +1017,8 @@ button, input, textarea, select, [role="button"], a {
   width: 100%;
   height: 100%;
   overflow: hidden;
+  padding: 6px 8px 8px 8px;
+  gap: 8px;
   background-color: var(--bg-app);
 }
 
@@ -1005,10 +1028,13 @@ button, input, textarea, select, [role="button"], a {
   width: 220px;
   height: 100%;
   background-color: var(--bg-sidebar);
-  border-right: 1px solid var(--border-subtle);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
   padding: 12px 8px;
   user-select: none;
   flex-shrink: 0;
+  overflow: hidden;
 }
 
 .settings-sidebar-header {
@@ -1088,13 +1114,16 @@ button, input, textarea, select, [role="button"], a {
   color: inherit;
 }
 
-/* Settings Main Content Area */
+/* Settings Main Content Area (JetBrains Floating Card) */
 .settings-main-content {
   flex: 1;
   height: 100%;
   overflow-y: auto;
   padding: 36px 52px;
-  background-color: var(--bg-app);
+  background-color: var(--bg-sidebar);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
 }
 
 .settings-tab-pane {
@@ -1623,19 +1652,20 @@ button, input, textarea, select, [role="button"], a {
    Theme: 纯净黑 (pure-black) — variable overrides over the pure-white base
    ========================================================================== */
 [data-theme="pure-black"] {
-  --bg-app: #161618;
-  --bg-sidebar: #1b1b1e;
-  --bg-sidebar-hover: #242428;
-  --bg-sidebar-active: #2a2a2f;
-  --bg-card: #1f1f22;
-  --bg-input: #26262a;
-  --bg-pill: #2a2a2f;
-  --bg-pill-hover: #333338;
-  --bg-pill-active: #26262a;
+  --bg-app: #141416;
+  --bg-sidebar: #1e1f22;
+  --bg-sidebar-hover: #26282d;
+  --bg-sidebar-active: #2f3137;
+  --bg-card: #25272c;
+  --bg-input: #26282c;
+  --bg-pill: #2a2c31;
+  --bg-pill-hover: #34373d;
+  --bg-pill-active: #26282c;
+  --bg-stage-fade: rgba(30, 31, 34, 0.85);
 
-  --border-subtle: #2a2a2e;
-  --border-default: #35353a;
-  --border-strong: #45454c;
+  --border-subtle: #2b2d30;
+  --border-default: #393b40;
+  --border-strong: #4e5157;
   --border-focus: #f4f4f5;
 
   --text-primary: #f4f4f5;
@@ -1661,21 +1691,22 @@ button, input, textarea, select, [role="button"], a {
   --font-sans: "Linux Biolinum", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
   --font-mono: "JetBrains Mono", "Fira Code", Consolas, Menlo, monospace;
 
-  /* ZCode Light Neutral Palette */
-  --bg-app: #fcfcfd;
-  --bg-sidebar: #f7f7f8;
-  --bg-sidebar-hover: #efeff1;
-  --bg-sidebar-active: #e8e8eb;
+  /* JetBrains Clean Palette */
+  --bg-app: #ffffff;
+  --bg-sidebar: #f6f6f8;
+  --bg-sidebar-hover: #ededf0;
+  --bg-sidebar-active: #e3e3e7;
   --bg-card: #ffffff;
   --bg-input: #ffffff;
-  --bg-pill: #f3f4f6;
-  --bg-pill-hover: #e5e7eb;
+  --bg-pill: #eeeeef;
+  --bg-pill-hover: #e3e3e6;
   --bg-pill-active: #ffffff;
+  --bg-stage-fade: rgba(246, 246, 248, 0.85);
 
   /* Borders & Dividers */
-  --border-subtle: #f0f0f2;
-  --border-default: #e5e7eb;
-  --border-strong: #d1d5db;
+  --border-subtle: #e8e8ed;
+  --border-default: #dadbe0;
+  --border-strong: #c8c9ce;
   --border-focus: #18181b;
 
   /* Typography */
@@ -2237,14 +2268,17 @@ button, input, textarea, select, [role="button"], a {
 
 /* ─── Embedded terminal dock (bottom of main area) ─────────── */
 .terminal-dock {
-  border-top: 1px solid var(--border-default);
-  background: #f4f4f5;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-sidebar);
   height: 300px;
   min-height: 180px;
   max-height: 55%;
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
+  border-bottom-left-radius: var(--radius-lg);
+  border-bottom-right-radius: var(--radius-lg);
+  z-index: 5;
 }
 
 .terminal-dock-tabs {
@@ -2253,8 +2287,8 @@ button, input, textarea, select, [role="button"], a {
   justify-content: space-between;
   height: 34px;
   padding: 0 8px 0 4px;
-  background: #ececed;
-  border-bottom: 1px solid var(--border-default);
+  background: var(--bg-sidebar);
+  border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
 }
 
@@ -2381,11 +2415,11 @@ button, input, textarea, select, [role="button"], a {
 }
 
 .terminal-instance .xterm-viewport {
-  background: #f4f4f5 !important;
+  background: var(--bg-sidebar) !important;
 }
 
 /* ==========================================================================
-   Git Source Control Panel & Visual Tree (VS Code Style)
+   Git Source Control Panel & Visual Tree (JetBrains Floating Card)
    ========================================================================== */
 .git-control-panel {
   display: flex;
@@ -2395,7 +2429,9 @@ button, input, textarea, select, [role="button"], a {
   max-width: 260px;
   height: 100%;
   background-color: var(--bg-sidebar);
-  border-right: 1px solid var(--border-subtle);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
   user-select: none;
   overflow: hidden;
   flex-shrink: 0;
