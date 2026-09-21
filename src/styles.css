@@ -1866,8 +1866,8 @@ button, input, textarea, select, [role="button"], a {
   width: 20px;
   height: 20px;
   border-radius: var(--radius-xs);
-  background: var(--bg-card);
-  border: 1px solid var(--border-default);
+  background: transparent;
+  border: none;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1877,15 +1877,13 @@ button, input, textarea, select, [role="button"], a {
 }
 
 .project-node-actions .icon-btn:hover {
-  border-color: var(--border-strong);
   color: var(--text-primary);
-  background: var(--bg-sidebar-hover);
+  background: var(--bg-pill-hover);
 }
 
 .project-node-actions .icon-btn.active {
-  border-color: var(--accent-blue);
   color: var(--accent-blue);
-  background: var(--bg-card);
+  background: var(--bg-pill-hover);
 }
 
 .project-tasks {
