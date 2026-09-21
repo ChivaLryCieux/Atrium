@@ -1,6 +1,7 @@
 mod ai_client;
 mod commands;
 pub mod daemon;
+pub mod git;
 mod messages;
 mod models;
 mod orchestration;
@@ -76,6 +77,19 @@ pub fn run() {
             commands::write_terminal,
             commands::resize_terminal,
             commands::close_terminal,
+            commands::git_detect_repos,
+            commands::git_get_status,
+            commands::git_stage_file,
+            commands::git_unstage_file,
+            commands::git_stage_all,
+            commands::git_unstage_all,
+            commands::git_discard_file,
+            commands::git_commit,
+            commands::git_push,
+            commands::git_pull,
+            commands::git_fetch,
+            commands::git_get_log,
+            commands::git_get_diff,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Atrium")
