@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { AppSettings, AiProfile, ProviderModel, TokenMetrics } from "../types/chat";
 import { AppDialog, AppDialogRequest } from "./AppDialog";
 import { default as i18n, normalizeLocale, setAppLocale, type AppLocale } from "../locales";
+import { THEMES, normalizeThemeMode, type ThemeMode } from "../themes";
 
 type SettingsTab = "general" | "appearance" | "model" | "tokens";
 
@@ -56,7 +57,7 @@ export function SettingsView({
     setDialog({ kind: "alert", title: tRef.current("common.hint"), message, tone });
   };
 
-  const themeMode = settings.themeMode ?? "light";
+  const themeMode = normalizeThemeMode(settings.themeMode);
   const fontSize = settings.fontSize ?? "14px";
 
   useEffect(() => {
@@ -386,18 +387,20 @@ export function SettingsView({
                 </div>
                 <div className="setting-control-col">
                   <div className="theme-toggle-group">
-                    {(["light", "system", "dark"] as const).map((mode) => (
-                      <button
-                        key={mode}
-                        type="button"
-                        className={`theme-option-btn ${themeMode === mode ? "active" : ""}`}
-                        onClick={() => onSaveSettings({ ...settings, themeMode: mode })}
-                      >
-                        <span>
-                          {mode === "light" ? t("settings.themeLight") : mode === "system" ? t("settings.themeSystem") : t("settings.themeDark")}
-                        </span>
-                      </button>
-                    ))}
+                    {([...THEMES.map((entry) => entry.id), "system"] as ThemeMode[]).map((mode) => {
+                      const theme = THEMES.find((entry) => entry.id === mode);
+                      return (
+                        <button
+                          key={mode}
+                          type="button"
+                          title={theme ? t(theme.descriptionKey) : t("settings.themeSystemDesc")}
+                          className={`theme-option-btn ${themeMode === mode ? "active" : ""}`}
+                          onClick={() => onSaveSettings({ ...settings, themeMode: mode })}
+                        >
+                          <span>{theme ? t(theme.nameKey) : t("settings.themeSystem")}</span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               </div>

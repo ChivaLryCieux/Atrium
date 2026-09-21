@@ -59,7 +59,8 @@ pub struct AppSettings {
     /// Kernel agent reasoning effort: off | low | high | max.
     #[serde(default)]
     pub reasoning_effort: Option<String>,
-    /// UI theme: light | system | dark.
+    /// UI theme mode: pure-white | pure-black | atrium-color | system.
+    /// Legacy values (light/dark) are migrated by the frontend.
     #[serde(default)]
     pub theme_mode: Option<String>,
     /// UI font scale preset: 13px | 14px | 15px.

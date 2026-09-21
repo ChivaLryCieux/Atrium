@@ -1,3 +1,5 @@
+import type { ThemeMode } from "../themes";
+
 export type ProviderModel = {
   id: string;
   name: string;
@@ -29,7 +31,7 @@ export type AppSettings = {
   orchestrationMode: OrchestrationMode;
   reasoningEffort?: ReasoningEffort | null;
   executionMode?: ExecutionMode | null;
-  themeMode?: "light" | "system" | "dark" | null;
+  themeMode?: ThemeMode | null;
   fontSize?: "13px" | "14px" | "15px" | null;
   activeSoul?: string | null;
 };

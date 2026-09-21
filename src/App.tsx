@@ -26,6 +26,7 @@ import {
 } from "./types/chat";
 import { createPendingMessages } from "./utils/messages";
 import { dshClient } from "./services/dshClient";
+import { applyTheme, normalizeThemeMode } from "./themes";
 import { useTranslation } from "react-i18next";
 
 export function App() {
@@ -177,19 +178,15 @@ export function App() {
   // ── Apply theme + font scale ─────────────────────────────────
   useEffect(() => {
     if (!settings) return;
-    const root = document.documentElement;
-    const theme = settings.themeMode ?? "light";
-    root.dataset.theme = theme;
-    if (theme === "system") {
+    const mode = normalizeThemeMode(settings.themeMode);
+    applyTheme(mode);
+    if (mode === "system") {
+      // Follow the OS live: re-resolve whenever the preference flips.
       const media = window.matchMedia("(prefers-color-scheme: dark)");
-      root.dataset.resolvedTheme = media.matches ? "dark" : "light";
-      const onChange = (e: MediaQueryListEvent) => {
-        root.dataset.resolvedTheme = e.matches ? "dark" : "light";
-      };
+      const onChange = () => applyTheme(mode);
       media.addEventListener("change", onChange);
       return () => media.removeEventListener("change", onChange);
     }
-    root.dataset.resolvedTheme = theme;
   }, [settings?.themeMode]);
 
   useEffect(() => {

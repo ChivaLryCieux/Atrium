@@ -54,6 +54,11 @@
   font-display: swap;
 }
 
+/* ==========================================================================
+   Theme: 纯净白 (pure-white) — the base light theme.
+   :root carries the pure-white tokens; other theme blocks below override
+   only what differs. The active theme is selected by data-theme on <html>.
+   ========================================================================== */
 :root {
   --font-sans: "Linux Biolinum", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
   --font-mono: "JetBrains Mono", "Fira Code", Consolas, Menlo, monospace;
@@ -1622,8 +1627,10 @@ button, input, textarea, select, [role="button"], a {
   font-size: 12px;
 }
 
-/* ─── Dark theme (variable overrides over the light base) ──── */
-[data-resolved-theme="dark"] {
+/* ==========================================================================
+   Theme: 纯净黑 (pure-black) — variable overrides over the pure-white base
+   ========================================================================== */
+[data-theme="pure-black"] {
   --bg-app: #161618;
   --bg-sidebar: #1b1b1e;
   --bg-sidebar-hover: #242428;
@@ -1650,6 +1657,61 @@ button, input, textarea, select, [role="button"], a {
   --accent-on-black: #161618;
   --shadow-card: 0 10px 30px -4px rgba(0, 0, 0, 0.4), 0 4px 12px -2px rgba(0, 0, 0, 0.3);
   --shadow-modal: 0 20px 40px -10px rgba(0, 0, 0, 0.6);
+}
+
+/* ==========================================================================
+   Theme: 中庭彩 (atrium-color) — 纯净白的完整副本（快照）。
+   以下变量值为纯净白在主题系统建立时的完整快照：纯净白后续的改动不会
+   影响本主题。设计迭代时直接修改此块内的值即可；:root 新增的 token 在
+   被此处覆写之前会继承下来。
+   ========================================================================== */
+[data-theme="atrium-color"] {
+  --font-sans: "Linux Biolinum", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", Consolas, Menlo, monospace;
+
+  /* ZCode Light Neutral Palette */
+  --bg-app: #fcfcfd;
+  --bg-sidebar: #f7f7f8;
+  --bg-sidebar-hover: #efeff1;
+  --bg-sidebar-active: #e8e8eb;
+  --bg-card: #ffffff;
+  --bg-input: #ffffff;
+  --bg-pill: #f3f4f6;
+  --bg-pill-hover: #e5e7eb;
+  --bg-pill-active: #ffffff;
+
+  /* Borders & Dividers */
+  --border-subtle: #f0f0f2;
+  --border-default: #e5e7eb;
+  --border-strong: #d1d5db;
+  --border-focus: #18181b;
+
+  /* Typography */
+  --text-primary: #18181b;
+  --text-secondary: #52525b;
+  --text-muted: #71717a;
+  --text-placeholder: #a1a1aa;
+  --text-disabled: #d4d4d8;
+
+  /* Brand Accents */
+  --accent-black: #18181b;
+  --accent-black-hover: #27272a;
+  --accent-on-black: #ffffff;
+  --accent-blue: #2563eb;
+  --accent-danger: #ef4444;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+  --shadow-card: 0 10px 30px -4px rgba(0, 0, 0, 0.04), 0 4px 12px -2px rgba(0, 0, 0, 0.02);
+  --shadow-modal: 0 20px 40px -10px rgba(0, 0, 0, 0.1);
+
+  /* Radii */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 9999px;
 }
 
 /* ─── Provider editor (custom-only model settings) ─────────── */

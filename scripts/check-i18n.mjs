@@ -48,6 +48,11 @@ for (const file of collectSources("src")) {
   for (const match of source.matchAll(/\bt\(\s*"([A-Za-z0-9_.]+)"/g)) used.add(match[1]);
   for (const match of source.matchAll(/tRef\.current\(\s*"([A-Za-z0-9_.]+)"/g)) used.add(match[1]);
   for (const match of source.matchAll(/i18n\.t\(\s*"([A-Za-z0-9_.]+)"/g)) used.add(match[1]);
+  // Registry-driven lookups: `t(entry.nameKey)` where the registry literal
+  // lives in a *Key field (e.g. the theme registry in src/themes/). The
+  // value must be namespace-shaped (contains a dot) so plain object keys
+  // like { key: "plan" } don't false-positive.
+  for (const match of source.matchAll(/\b\w*[Kk]ey:\s*"([a-z]\w*(?:\.\w+)+)"/g)) used.add(match[1]);
 }
 const unknown = [...used].filter((key) => !zh.keys.has(key));
 if (unknown.length) {
