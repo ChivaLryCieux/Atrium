@@ -1815,7 +1815,7 @@ button, input, textarea, select, [role="button"], a {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 7px 10px;
+  padding: 5px 6px 5px 10px;
   border-radius: var(--radius-md);
   cursor: pointer;
   font-size: 13px;
@@ -1854,34 +1854,38 @@ button, input, textarea, select, [role="button"], a {
 }
 
 .project-node-actions {
-  position: absolute;
-  right: 8px;
-  top: 50%;
-  transform: translateY(-50%);
   display: flex;
-  gap: 2px;
-  opacity: 0;
-  transition: opacity 0.12s;
-  background: inherit;
-}
-
-.project-node:hover .project-node-actions {
-  opacity: 1;
-}
-
-.project-node:hover .project-node-row {
-  padding-right: 64px;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
 .project-node-actions .icon-btn {
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   border-radius: var(--radius-xs);
   background: var(--bg-card);
   border: 1px solid var(--border-default);
   display: flex;
   align-items: center;
   justify-content: center;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.project-node-actions .icon-btn:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+  background: var(--bg-sidebar-hover);
+}
+
+.project-node-actions .icon-btn.active {
+  border-color: var(--accent-blue);
+  color: var(--accent-blue);
+  background: var(--bg-card);
 }
 
 .project-tasks {
