@@ -1,7 +1,7 @@
 .text-type {
   display: inline-block;
   white-space: pre-wrap;
-  min-height: 32px;
+  min-height: 1.3em;
 }
 
 .text-type__content {
@@ -9,7 +9,7 @@
 }
 
 .text-type__cursor {
-  margin-left: 2px;
+  margin-left: 3px;
   display: inline-block;
   opacity: 1;
   color: var(--text-primary, #18181b);

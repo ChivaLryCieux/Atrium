@@ -11,6 +11,7 @@ import { AboutDialog } from "./components/AboutDialog";
 import { GitSourceControlPanel } from "./components/GitSourceControlPanel";
 import { PromptCard } from "./components/PromptCard";
 import { TerminalPanel, TerminalSession } from "./components/TerminalPanel";
+import Grainient from "./components/Grainient";
 import { createUserMessage } from "./constants/defaults";
 import {
   AiProfile,
@@ -613,6 +614,39 @@ export function App() {
 
           {/* Center Stage Canvas */}
           <main className="stage-container">
+            <Grainient
+              className="stage-marble-bg"
+              style={{
+                position: "absolute",
+                inset: 0,
+                width: "100%",
+                height: "100%",
+                pointerEvents: "none",
+                zIndex: 0,
+              }}
+              color1="#dfceaf"
+              color2="#D4A26A"
+              color3="#5C4A3E"
+              timeSpeed={0.8}
+              colorBalance={0}
+              warpStrength={1.2}
+              warpFrequency={8.5}
+              warpSpeed={2}
+              warpAmplitude={50}
+              blendAngle={0}
+              blendSoftness={0.05}
+              rotationAmount={500}
+              noiseScale={2}
+              grainAmount={0.1}
+              grainScale={2}
+              grainAnimated={false}
+              contrast={1.5}
+              gamma={1}
+              saturation={1}
+              centerX={0}
+              centerY={0}
+              zoom={0.9}
+            />
             {messages.length === 0 ? (
               /* Home / Greeting Stage */
               <CenterHome
