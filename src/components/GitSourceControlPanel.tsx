@@ -42,6 +42,7 @@ export function GitSourceControlPanel({
   const [selectedCommit, setSelectedCommit] = useState<GitCommit | null>(null);
   const [isChangesExpanded, setIsChangesExpanded] = useState<boolean>(true);
   const [isGraphExpanded, setIsGraphExpanded] = useState<boolean>(true);
+  const [isInitializing, setIsInitializing] = useState<boolean>(false);
 
   // Compute target project directory
   const projectDirectory = useMemo(() => {
@@ -285,6 +286,20 @@ export function GitSourceControlPanel({
     }
   };
 
+  // Initialize Git Repository
+  const handleInitRepo = async () => {
+    if (!projectDirectory) return;
+    setIsInitializing(true);
+    try {
+      await invoke("git_init", { repoPath: projectDirectory });
+      await loadRepos();
+    } catch (err) {
+      alert(`初始化 Git 仓库失败: ${err}`);
+    } finally {
+      setIsInitializing(false);
+    }
+  };
+
   const selectedRepo = repos.find((r) => r.info.path === selectedGraphRepoPath);
 
   return (
@@ -331,7 +346,30 @@ export function GitSourceControlPanel({
       {/* ── Scrollable Body: Split into Upper (Changes) & Lower (Graph) ── */}
       <div className="git-panel-scroll">
         {repos.length === 0 ? (
-          <div className="git-empty-state">{t("git.noRepos")}</div>
+          <div className="git-empty-state">
+            <div className="git-empty-icon">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <circle cx="18" cy="18" r="3" />
+                <circle cx="6" cy="6" r="3" />
+                <path d="M18 6v6a2 2 0 0 1-2 2H8" />
+                <path d="M6 9v12" />
+              </svg>
+            </div>
+            <div className="git-empty-title">{t("git.noRepos")}</div>
+            <p className="git-empty-desc">{t("git.initDesc")}</p>
+            <button
+              type="button"
+              className="git-btn-init"
+              disabled={isInitializing}
+              onClick={handleInitRepo}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              <span>{isInitializing ? t("git.initializing") : t("git.initRepo")}</span>
+            </button>
+          </div>
         ) : (
           <>
             {/* ── Upper Section: Changes ──────────────────────── */}

@@ -279,6 +279,10 @@
     "noRepos": "No Git repository detected in current project path",
     "aheadBehind": "Ahead {{ahead}} / Behind {{behind}}",
     "commitCount": "{{count}} commits",
-    "close": "Close Panel"
+    "close": "Close Panel",
+    "initRepo": "Initialize Git Repository",
+    "initDesc": "No source control is initialized for this project yet. Click below to initialize a Git repository.",
+    "initializing": "Initializing...",
+    "initSuccess": "Git repository initialized successfully"
   }
 }

@@ -128,6 +128,15 @@ fn build_repo_info(repo_dir: &Path, is_submodule: bool) -> Option<GitRepoInfo> {
 
 // ─── Public API ────────────────────────────────────────────────
 
+pub fn init_repo(repo_path: &str) -> Result<GitRepoInfo, String> {
+    let dir = Path::new(repo_path);
+    if !dir.exists() {
+        return Err(format!("目录不存在: {repo_path}"));
+    }
+    run_git(dir, &["init"])?;
+    build_repo_info(dir, false).ok_or_else(|| "初始化 Git 仓库后未能解析仓库信息".to_string())
+}
+
 pub fn detect_repos(project_path: &str) -> Result<Vec<GitRepoInfo>, String> {
     let root = Path::new(project_path);
     if !root.exists() {

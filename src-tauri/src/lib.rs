@@ -77,6 +77,7 @@ pub fn run() {
             commands::write_terminal,
             commands::resize_terminal,
             commands::close_terminal,
+            commands::git_init,
             commands::git_detect_repos,
             commands::git_get_status,
             commands::git_stage_file,

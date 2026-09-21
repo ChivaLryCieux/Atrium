@@ -401,6 +401,11 @@ pub fn delete_session(app: AppHandle, session_id: String) -> Result<(), String> 
 // ─── Git Source Control ────────────────────────────────────────
 
 #[tauri::command]
+pub fn git_init(repo_path: String) -> Result<crate::git::GitRepoInfo, String> {
+    crate::git::init_repo(&repo_path)
+}
+
+#[tauri::command]
 pub fn git_detect_repos(project_path: String) -> Result<Vec<crate::git::GitRepoInfo>, String> {
     crate::git::detect_repos(&project_path)
 }

@@ -279,6 +279,10 @@
     "noRepos": "当前项目路径下未检测到 Git 仓库",
     "aheadBehind": "超前 {{ahead}} / 落后 {{behind}}",
     "commitCount": "{{count}} 次提交",
-    "close": "关闭面板"
+    "close": "关闭面板",
+    "initRepo": "建立 Git 仓库",
+    "initDesc": "当前项目尚未初始化版本控制，点击下方按钮在此目录下建立 Git 仓库。",
+    "initializing": "正在初始化...",
+    "initSuccess": "Git 仓库建立成功"
   }
 }
