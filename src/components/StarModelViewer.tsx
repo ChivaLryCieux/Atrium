@@ -74,12 +74,13 @@ function applyColorfulShading(mesh: THREE.Mesh) {
 interface StarMeshProps {
   isRotating: boolean;
   spinTrigger?: number;
+  slowSpin?: boolean;
 }
 
-const StarMesh: React.FC<StarMeshProps> = ({ isRotating, spinTrigger }) => {
+const StarMesh: React.FC<StarMeshProps> = ({ isRotating, spinTrigger, slowSpin = false }) => {
   const groupRef = useRef<THREE.Group>(null);
   const [modelScene, setModelScene] = useState<THREE.Group | null>(null);
-  const currentSpeedRef = useRef<number>(0);
+  const currentSpeedRef = useRef<number>(0.42);
   const boostRef = useRef<number>(0);
 
   // Trigger energetic spin whenever clicked or moving between states
@@ -144,9 +145,12 @@ const StarMesh: React.FC<StarMeshProps> = ({ isRotating, spinTrigger }) => {
       boostRef.current = 0;
     }
 
-    const baseSpeed = isRotating ? 2.4 : 0;
+    // Always slowly rotate (0.42 rad/s) by default in all idle states.
+    // Fast rotate (2.4 rad/s) during reasoning/streaming.
+    // High-energy spin boost (+6.8 rad/s) on click/move.
+    const baseSpeed = isRotating ? 2.4 : 0.42;
     const targetSpeed = baseSpeed + boostRef.current;
-    currentSpeedRef.current += (targetSpeed - currentSpeedRef.current) * Math.min(1, delta * 5.0);
+    currentSpeedRef.current += (targetSpeed - currentSpeedRef.current) * Math.min(1, delta * 4.0);
 
     if (groupRef.current && Math.abs(currentSpeedRef.current) > 0.0005) {
       groupRef.current.rotation.y += currentSpeedRef.current * delta;
@@ -169,11 +173,13 @@ const StarMesh: React.FC<StarMeshProps> = ({ isRotating, spinTrigger }) => {
 export interface StarModelViewerProps {
   isRotating?: boolean;
   spinTrigger?: number;
+  slowSpin?: boolean;
 }
 
 export const StarModelViewer: React.FC<StarModelViewerProps> = ({
   isRotating = false,
   spinTrigger,
+  slowSpin = false,
 }) => {
   return (
     <div className="telemetry-star-canvas-wrapper">
@@ -186,7 +192,7 @@ export const StarModelViewer: React.FC<StarModelViewerProps> = ({
         <directionalLight position={[4, 6, 5]} intensity={1.8} />
         <directionalLight position={[-4, -3, -3]} intensity={0.9} color="#fb7185" />
         <pointLight position={[0, 0, 3.5]} intensity={1.1} color="#fde047" />
-        <StarMesh isRotating={isRotating} spinTrigger={spinTrigger} />
+        <StarMesh isRotating={isRotating} spinTrigger={spinTrigger} slowSpin={slowSpin} />
       </Canvas>
     </div>
   );

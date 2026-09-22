@@ -957,12 +957,12 @@ body.resizing-row * {
   filter: drop-shadow(0 4px 16px rgba(0, 0, 0, 0.14));
 }
 
-.state-minimal .telemetry-star-chart:hover .telemetry-star-wrapper {
+.state-minimal .telemetry-star-chart:not(.is-new-chat-star):hover .telemetry-star-wrapper {
   transform: scale(1.1);
   filter: drop-shadow(0 6px 22px rgba(251, 191, 36, 0.55));
 }
 
-.state-minimal .telemetry-star-chart:active .telemetry-star-wrapper {
+.state-minimal .telemetry-star-chart:not(.is-new-chat-star):active .telemetry-star-wrapper {
   transform: scale(0.95);
 }
 
@@ -971,9 +971,16 @@ body.resizing-row * {
   filter: drop-shadow(0 4px 18px rgba(251, 191, 36, 0.28));
 }
 
-[data-resolved-theme="dark"] .state-minimal .telemetry-star-chart:hover .telemetry-star-wrapper,
-[data-theme="pure-black"] .state-minimal .telemetry-star-chart:hover .telemetry-star-wrapper {
+[data-resolved-theme="dark"] .state-minimal .telemetry-star-chart:not(.is-new-chat-star):hover .telemetry-star-wrapper,
+[data-theme="pure-black"] .state-minimal .telemetry-star-chart:not(.is-new-chat-star):hover .telemetry-star-wrapper {
   filter: drop-shadow(0 6px 26px rgba(251, 191, 36, 0.65));
+}
+
+/* New Chat Page Star (non-interactive, default cursor, cannot expand) */
+.is-new-chat-star,
+.is-new-chat-star * {
+  cursor: default !important;
+  user-select: none;
 }
 
 .telemetry-star-canvas-wrapper {

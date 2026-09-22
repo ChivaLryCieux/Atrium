@@ -237,14 +237,31 @@ export const StageTelemetryHud: React.FC<StageTelemetryHudProps> = ({
     return 0;
   }, [messages, isStreaming, streamElapsedSec]);
 
+  const isNewChat = messages.length === 0;
+
   // HUD Display States:
   // "default": 3 slots (Tokens, Context Gauge, Star)
   // "expanded": 3 slots + Extended stats (Average output speed)
   // "minimal": Panel background disappears, Slots 1 & 2 collapse, Star glides up to the top-right
-  const [displayState, setDisplayState] = useState<"default" | "expanded" | "minimal">("default");
+  const [displayState, setDisplayState] = useState<"default" | "expanded" | "minimal">(
+    isNewChat ? "minimal" : "default"
+  );
   const [spinTrigger, setSpinTrigger] = useState<number>(0);
+  const prevMessagesLenRef = useRef<number>(messages.length);
+
+  // When user initiates a conversation from new chat page, automatically expand into default state!
+  useEffect(() => {
+    if (prevMessagesLenRef.current === 0 && messages.length > 0) {
+      setDisplayState("default");
+      setSpinTrigger((prev) => prev + 1);
+    } else if (messages.length === 0 && prevMessagesLenRef.current > 0) {
+      setDisplayState("minimal");
+    }
+    prevMessagesLenRef.current = messages.length;
+  }, [messages.length]);
 
   const cycleDisplayState = () => {
+    if (isNewChat) return; // In new chat page, Star is not clickable and data panel will not expand
     setSpinTrigger((prev) => prev + 1);
     setDisplayState((prev) => {
       if (prev === "default") return "expanded";
@@ -254,19 +271,26 @@ export const StageTelemetryHud: React.FC<StageTelemetryHudProps> = ({
   };
 
   const starTooltip = useMemo(() => {
+    if (isNewChat) return undefined;
     if (displayState === "default") return t("stage.clickToExpand");
     if (displayState === "expanded") return t("stage.clickToMinimize");
     return t("stage.clickToRestore");
-  }, [displayState, t]);
+  }, [displayState, isNewChat, t]);
 
   return (
     <div
-      className={`stage-telemetry-hud state-${displayState} ${isStreaming ? "is-streaming" : ""}`}
-      title={displayState === "minimal" ? starTooltip : t("stage.ratioTooltip", {
-        current: tokensUsed.toLocaleString(),
-        ceiling: ceiling.label,
-        percent: percentUsed.toFixed(1),
-      })}
+      className={`stage-telemetry-hud state-${displayState} ${isNewChat ? "is-new-chat" : ""} ${isStreaming ? "is-streaming" : ""}`}
+      title={
+        isNewChat
+          ? undefined
+          : displayState === "minimal"
+          ? starTooltip
+          : t("stage.ratioTooltip", {
+              current: tokensUsed.toLocaleString(),
+              ceiling: ceiling.label,
+              percent: percentUsed.toFixed(1),
+            })
+      }
     >
       {/* ── Chart 1: 词元使用统计 (Token usage) ── */}
       <div className="telemetry-collapsible-item telemetry-slot-1">
@@ -344,12 +368,12 @@ export const StageTelemetryHud: React.FC<StageTelemetryHudProps> = ({
 
       {/* ── Chart 3: 更多统计数据 (Interactive Star 3D Model) ── */}
       <div
-        className={`telemetry-chart telemetry-star-chart state-${displayState}`}
-        onClick={cycleDisplayState}
-        role="button"
-        tabIndex={0}
+        className={`telemetry-chart telemetry-star-chart state-${displayState} ${isNewChat ? "is-new-chat-star" : ""}`}
+        onClick={isNewChat ? undefined : cycleDisplayState}
+        role={isNewChat ? undefined : "button"}
+        tabIndex={isNewChat ? undefined : 0}
         onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
+          if (!isNewChat && (e.key === "Enter" || e.key === " ")) {
             e.preventDefault();
             cycleDisplayState();
           }
@@ -376,6 +400,7 @@ export const StageTelemetryHud: React.FC<StageTelemetryHudProps> = ({
           <StarModelViewer
             isRotating={isStreaming || messages.some((m) => m.pending)}
             spinTrigger={spinTrigger}
+            slowSpin={isNewChat}
           />
         </div>
       </div>

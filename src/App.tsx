@@ -1001,14 +1001,12 @@ export function App() {
                 centerY={0}
                 zoom={0.9}
               />
-              {messages.length > 0 && (
-                <StageTelemetryHud
-                  messages={messages}
-                  selectedModel={selectedModel}
-                  activeProfile={activeProfile}
-                  isStreaming={isSending}
-                />
-              )}
+              <StageTelemetryHud
+                messages={messages}
+                selectedModel={selectedModel}
+                activeProfile={activeProfile}
+                isStreaming={isSending}
+              />
               {messages.length === 0 ? (
                 /* Home / Greeting Stage */
                 <CenterHome
