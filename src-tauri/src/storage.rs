@@ -86,6 +86,8 @@ fn default_settings() -> AppSettings {
         theme_mode: Some("light".to_string()),
         font_size: Some("14px".to_string()),
         active_soul: Some(DEFAULT_SOUL_FOLDER.to_string()),
+        active_profile_id: None,
+        selected_model: None,
     }
 }
 
@@ -184,6 +186,28 @@ fn normalize_settings(mut settings: AppSettings) -> AppSettings {
     if let Some(size) = &settings.font_size {
         if !["13px", "14px", "15px"].contains(&size.as_str()) {
             settings.font_size = None;
+        }
+    }
+    // The persisted model-picker choice must reference a surviving
+    // profile and one of its listed models; a deleted provider or a
+    // hand-edited/garbage value falls back to the profile defaults.
+    let profile_ok = settings
+        .active_profile_id
+        .as_deref()
+        .map(|id| settings.ai_profiles.iter().any(|p| p.id == id))
+        .unwrap_or(false);
+    if !profile_ok {
+        settings.active_profile_id = None;
+        settings.selected_model = None;
+    } else if let Some(model) = &settings.selected_model {
+        let listed = settings
+            .ai_profiles
+            .iter()
+            .find(|p| Some(&p.id) == settings.active_profile_id.as_ref())
+            .map(|p| p.models.iter().any(|m| &m.name == model) || p.model == *model)
+            .unwrap_or(false);
+        if !listed {
+            settings.selected_model = None;
         }
     }
     settings
@@ -383,8 +407,16 @@ pub fn delete_profile(app: &AppHandle, profile_id: &str) -> Result<AppSettings, 
     if settings.ai_profiles.is_empty() {
         settings.ai_profiles = vec![default_profile()];
     }
-    save_settings(app, &settings)?;
-    Ok(settings)
+    // Dropping the persisted provider invalidates the model-picker choice;
+    // normalize_settings would clear it on next load anyway, but doing it
+    // here keeps the returned settings immediately consistent.
+    if settings.active_profile_id.as_deref() == Some(profile_id) {
+        settings.active_profile_id = None;
+        settings.selected_model = None;
+    }
+    let normalized = normalize_settings(settings);
+    save_settings(app, &normalized)?;
+    Ok(normalized)
 }
 
 // ─── Projects ──────────────────────────────────────────────────

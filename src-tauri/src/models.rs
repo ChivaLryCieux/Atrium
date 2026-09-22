@@ -73,6 +73,13 @@ pub struct AppSettings {
     /// Active persona folder under Souls/ (defaults to `Default`).
     #[serde(default)]
     pub active_soul: Option<String>,
+    /// Provider (AiProfile id) selected in the model picker. Persisted so
+    /// the operator's (provider, model) choice survives restarts.
+    #[serde(default)]
+    pub active_profile_id: Option<String>,
+    /// Model name selected in the model picker (within active_profile_id).
+    #[serde(default)]
+    pub selected_model: Option<String>,
 }
 
 fn default_orchestration_mode() -> String {
