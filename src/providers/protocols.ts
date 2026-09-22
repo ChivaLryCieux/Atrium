@@ -90,7 +90,10 @@ export function deriveEndpoint(baseUrl: string, protocol: ApiProtocol): string {
   const suffix =
     API_PROTOCOLS.find((p) => p.id === protocol)?.endpointSuffix ??
     API_PROTOCOLS.find((p) => p.id === DEFAULT_API_PROTOCOL)!.endpointSuffix;
-  const base = stripKnownSuffix(baseUrl);
+  let base = stripKnownSuffix(baseUrl);
+  if (suffix.startsWith("/v1/") && base.endsWith("/v1")) {
+    base = base.slice(0, base.length - 3).replace(/\/+$/, "");
+  }
   return base ? `${base}${suffix}` : "";
 }
 

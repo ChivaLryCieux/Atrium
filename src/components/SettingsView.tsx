@@ -88,6 +88,14 @@ export function SettingsView({
     settings.aiProfiles.find((p) => p.id === activeProfileId) ||
     settings.aiProfiles[0];
 
+  const [baseUrlInput, setBaseUrlInput] = useState(() =>
+    splitBaseUrl(currentProfile?.endpoint || "")
+  );
+
+  useEffect(() => {
+    setBaseUrlInput(splitBaseUrl(currentProfile?.endpoint || ""));
+  }, [currentProfile?.id]);
+
   const handleUpdateCurrentProfile = (patch: Partial<AiProfile>) => {
     if (!currentProfile) return;
     const updatedProfiles = settings.aiProfiles.map((p) =>
@@ -164,33 +172,38 @@ export function SettingsView({
     if (!currentProfile) return;
     updateModels([
       ...currentProfile.models,
-      { id: crypto.randomUUID(), name: "", contextLength: null },
+      { id: crypto.randomUUID(), name: "", contextLength: 256000 },
     ]);
   };
 
   const handleUpdateModel = (modelId: string, patch: Partial<ProviderModel>) => {
     if (!currentProfile) return;
-    updateModels(currentProfile.models.map((m) => (m.id === modelId ? { ...m, ...patch } : m)));
+    const oldModel = currentProfile.models.find((m) => m.id === modelId);
+    const nextModels = currentProfile.models.map((m) => (m.id === modelId ? { ...m, ...patch } : m));
+    const profilePatch: Partial<AiProfile> = { models: nextModels };
+    if (patch.name !== undefined && oldModel && currentProfile.model === oldModel.name) {
+      profilePatch.model = patch.name.trim();
+    }
+    handleUpdateCurrentProfile(profilePatch);
   };
 
   const handleRemoveModel = (modelId: string) => {
     if (!currentProfile) return;
-    updateModels(currentProfile.models.filter((m) => m.id !== modelId));
-  };
-
-  const handleSetDefaultModel = (name: string) => {
-    handleUpdateCurrentProfile({ model: name.trim() });
+    const remaining = currentProfile.models.filter((m) => m.id !== modelId);
+    const removed = currentProfile.models.find((m) => m.id === modelId);
+    const profilePatch: Partial<AiProfile> = { models: remaining };
+    if (removed && currentProfile.model === removed.name) {
+      profilePatch.model = remaining[0]?.name ?? "";
+    }
+    handleUpdateCurrentProfile(profilePatch);
   };
 
   return (
     <div className="settings-page-layout">
       {/* Left Settings Sidebar */}
       <aside className="settings-sidebar">
-        {/* Top: App Logo & Back Button */}
+        {/* Top: Back Button */}
         <div className="settings-sidebar-header">
-          <div className="app-logo-badge" title="Atrium">
-            <img src="/logo.png" alt="Atrium" className="app-logo-icon" />
-          </div>
           <button type="button" className="settings-back-btn" onClick={onBack} title={t("settings.backToWorkspace")}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
@@ -532,9 +545,10 @@ export function SettingsView({
                           value={resolveProfileProtocol(currentProfile.apiProtocol, currentProfile.endpoint)}
                           onChange={(e) => {
                             const protocol = e.target.value as ApiProtocol;
+                            const base = baseUrlInput.trim() || splitBaseUrl(currentProfile.endpoint);
                             handleUpdateCurrentProfile({
                               apiProtocol: protocol,
-                              endpoint: deriveEndpoint(splitBaseUrl(currentProfile.endpoint), protocol),
+                              endpoint: deriveEndpoint(base, protocol),
                             });
                           }}
                         >
@@ -544,39 +558,30 @@ export function SettingsView({
                             </option>
                           ))}
                         </select>
-                        <span className="form-hint">{t("settings.apiProtocolDesc")}</span>
                       </div>
 
-                      {/* Base URL — the endpoint with any protocol suffix stripped */}
+                      {/* Base URL — drives inference endpoint together with protocol */}
                       <div className="form-item">
                         <label>Base URL</label>
                         <input
                           type="text"
                           className="zcode-input"
-                          value={splitBaseUrl(currentProfile.endpoint)}
-                          onChange={(e) =>
+                          value={baseUrlInput}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setBaseUrlInput(val);
+                            const protocol = resolveProfileProtocol(currentProfile.apiProtocol, currentProfile.endpoint);
                             handleUpdateCurrentProfile({
-                              endpoint: deriveEndpoint(
-                                e.target.value,
-                                resolveProfileProtocol(currentProfile.apiProtocol, currentProfile.endpoint),
-                              ),
-                            })
-                          }
+                              endpoint: deriveEndpoint(val, protocol),
+                            });
+                          }}
+                          onBlur={() => {
+                            if (currentProfile?.endpoint) {
+                              setBaseUrlInput(splitBaseUrl(currentProfile.endpoint));
+                            }
+                          }}
                           placeholder="https://api.deepseek.com/v1"
                         />
-                      </div>
-
-                      {/* Inference endpoint — auto-completed, still editable */}
-                      <div className="form-item">
-                        <label>{t("settings.inferenceEndpoint")}</label>
-                        <input
-                          type="text"
-                          className="zcode-input"
-                          value={currentProfile.endpoint}
-                          onChange={(e) => handleUpdateCurrentProfile({ endpoint: e.target.value })}
-                          placeholder="https://api.deepseek.com/v1/chat/completions"
-                        />
-                        <span className="form-hint">{t("settings.endpointAutoHint")}</span>
                       </div>
 
                       <div className="form-item">
@@ -611,25 +616,16 @@ export function SettingsView({
                                 onChange={(e) => handleUpdateModel(model.id, { name: e.target.value })}
                                 placeholder={t("settings.modelNamePlaceholder")}
                               />
-                              <input
-                                type="text"
-                                className="zcode-input"
-                                value={model.contextLength ?? ""}
+                              <select
+                                className="zcode-select"
+                                value={model.contextLength && Number(model.contextLength) >= 500000 ? 1000000 : 256000}
                                 onChange={(e) => {
-                                  const raw = e.target.value.replace(/[^0-9]/g, "");
-                                  handleUpdateModel(model.id, { contextLength: raw === "" ? null : Number(raw) });
+                                  handleUpdateModel(model.id, { contextLength: Number(e.target.value) });
                                 }}
-                                placeholder={t("settings.contextLengthPlaceholder")}
-                              />
-                              <button
-                                type="button"
-                                className={`zcode-btn-secondary small ${currentProfile.model === model.name.trim() && model.name.trim() ? "active" : ""}`}
-                                disabled={!model.name.trim()}
-                                onClick={() => handleSetDefaultModel(model.name)}
-                                title={t("settings.setDefaultModelHint")}
                               >
-                                {model.name.trim() !== "" && currentProfile.model === model.name.trim() ? t("common.default") : t("common.setAsDefault")}
-                              </button>
+                                <option value={256000}>{t("settings.contextLength256k")}</option>
+                                <option value={1000000}>{t("settings.contextLength1m")}</option>
+                              </select>
                               <button
                                 type="button"
                                 className="model-row-remove"

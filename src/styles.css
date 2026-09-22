@@ -1313,17 +1313,17 @@ body.resizing-row * {
 .settings-sidebar-header {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 20px;
-  padding: 4px 6px;
+  margin-bottom: 16px;
+  padding: 2px 2px;
 }
 
 .settings-back-btn {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  border-radius: var(--radius-sm);
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
   border: none;
   background: transparent;
   color: var(--text-secondary);
@@ -2041,20 +2041,24 @@ body.resizing-row * {
 
 .model-edit-row {
   display: grid;
-  grid-template-columns: 1fr 140px auto auto;
+  grid-template-columns: 1fr 160px 28px;
   gap: 8px;
   align-items: center;
   padding: 8px 12px;
 }
 
-.model-edit-row .zcode-input {
+.model-edit-row .zcode-input,
+.model-edit-row .zcode-select {
   height: 30px;
   font-size: 12px;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .model-row-remove {
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2064,6 +2068,7 @@ body.resizing-row * {
   cursor: pointer;
   border-radius: var(--radius-xs);
   font-size: 12px;
+  justify-self: center;
 }
 
 .model-row-remove:hover {
