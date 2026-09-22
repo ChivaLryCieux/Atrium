@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Atrium // 智役中庭 — Desktop Kernel Bridge
+ * Atrium 智役中庭 — Desktop Kernel Bridge
  *
  * Drives the real DeepSeek Harness (dsh) runtime through the official
  * `@deepseek-ai/dsh-sdk-client` and exposes it to the Tauri shell as:
@@ -412,7 +412,7 @@ const httpServer = createServer(async (req, res) => {
 
     if (req.method === 'GET' && url === '/api/harness/info') {
       sendJson(res, 200, {
-        harness: 'Atrium // 智役中庭',
+        harness: 'Atrium 智役中庭',
         kernel: kernelMode === 'exe'
           ? 'DeepSeek Harness (packaged single-file runtime, SDK protocol)'
           : 'DeepSeek Harness (vendored upstream, SDK stdio runtime)',

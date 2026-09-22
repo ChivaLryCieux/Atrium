@@ -30,6 +30,7 @@ import {
   Soul,
 } from "./types/chat";
 import { createPendingMessages } from "./utils/messages";
+import { generateDefaultTaskTitle } from "./utils/tasks";
 import { dshClient } from "./services/dshClient";
 import { applyTheme, normalizeThemeMode } from "./themes";
 import { useTranslation } from "react-i18next";
@@ -338,11 +339,34 @@ export function App() {
   };
 
   // ── Start New Task (inside the given project) ─────────────────
-  const handleNewTask = (projectId?: string) => {
-    if (projectId) setActiveProjectId(projectId);
-    setActiveSessionId(null);
-    setMessages([]);
-    setDraft("");
+  const handleNewTask = async (projectId?: string) => {
+    const targetProjectId = projectId || activeProjectId;
+    if (targetProjectId) setActiveProjectId(targetProjectId);
+    const title = generateDefaultTaskTitle(sessions, targetProjectId, t);
+    try {
+      const created = await invoke<SessionSummary>("create_session", {
+        title,
+        projectId: targetProjectId,
+      });
+      setActiveSessionId(created.id);
+      setMessages([]);
+      setDraft("");
+      setSessions((prev) => [created, ...prev.filter((s) => s.id !== created.id)]);
+    } catch (err) {
+      console.error(t("app.createSessionFailed"), err);
+    }
+  };
+
+  // ── Rename Session ───────────────────────────────────────────
+  const handleRenameSession = async (sessionId: string, newTitle: string) => {
+    try {
+      await invoke("rename_session", { sessionId, newTitle });
+      setSessions((prev) =>
+        prev.map((s) => (s.id === sessionId ? { ...s, title: newTitle } : s))
+      );
+    } catch (err) {
+      console.error("Failed to rename session:", err);
+    }
   };
 
   // ── Project dialog save ──────────────────────────────────────
@@ -466,7 +490,7 @@ export function App() {
     let curSessionId = activeSessionId;
     if (!curSessionId) {
       try {
-        const title = draft.trim().slice(0, 20);
+        const title = generateDefaultTaskTitle(sessions, activeProjectId, t);
         const created = await invoke<SessionSummary>("create_session", {
           title,
           projectId: activeProjectId,
@@ -666,6 +690,7 @@ export function App() {
         onToggleSidebar={() => setIsSidebarCollapsed((prev) => !prev)}
         onNewTerminal={handleNewTerminal}
         onOpenAbout={() => setIsAboutOpen(true)}
+        projectName={activeProject?.name?.trim() || workspaceName || "初始空间"}
       />
 
       {currentView === "settings" && settings ? (
@@ -701,6 +726,7 @@ export function App() {
             }
             onSelectTask={handleSelectSession}
             onDeleteTask={handleDeleteSession}
+            onRenameTask={handleRenameSession}
           />
 
           {!isSidebarCollapsed && (
@@ -766,12 +792,14 @@ export function App() {
                 centerY={0}
                 zoom={0.9}
               />
-              <StageTelemetryHud
-                messages={messages}
-                selectedModel={selectedModel}
-                activeProfile={activeProfile}
-                isStreaming={isSending}
-              />
+              {messages.length > 0 && (
+                <StageTelemetryHud
+                  messages={messages}
+                  selectedModel={selectedModel}
+                  activeProfile={activeProfile}
+                  isStreaming={isSending}
+                />
+              )}
               {messages.length === 0 ? (
                 /* Home / Greeting Stage */
                 <CenterHome

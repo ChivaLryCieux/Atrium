@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Project } from "../types/chat";
+import { AppDialog, AppDialogRequest } from "./AppDialog";
 
 export type TaskSummary = {
   id: string;
@@ -27,6 +28,7 @@ type SidebarProps = {
   width?: number;
   onSelectTask: (id: string) => void;
   onDeleteTask: (id: string) => void;
+  onRenameTask?: (id: string, newTitle: string) => void;
 };
 
 export function Sidebar({
@@ -47,9 +49,47 @@ export function Sidebar({
   onToggleGitPanel,
   onSelectTask,
   onDeleteTask,
+  onRenameTask,
 }: SidebarProps) {
   const { t } = useTranslation();
   const avatarInitial = (userName || "T").trim().charAt(0).toUpperCase();
+
+  // Delete confirmation dialog state
+  const [dialog, setDialog] = useState<AppDialogRequest | null>(null);
+
+  // Inline rename state
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState<string>("");
+  const renameInputRef = useRef<HTMLInputElement | null>(null);
+
+  const startRenaming = (task: TaskSummary) => {
+    setEditingTaskId(task.id);
+    setEditingTitle(task.title || "");
+    setTimeout(() => {
+      renameInputRef.current?.focus();
+      renameInputRef.current?.select();
+    }, 50);
+  };
+
+  const commitRename = (taskId: string) => {
+    const trimmed = editingTitle.trim();
+    if (trimmed && onRenameTask) {
+      onRenameTask(taskId, trimmed);
+    }
+    setEditingTaskId(null);
+  };
+
+  const handleDeleteClick = (task: TaskSummary) => {
+    setDialog({
+      kind: "confirm",
+      title: t("common.hint"),
+      message: t("sidebar.confirmDeleteTask"),
+      tone: "danger",
+      onConfirm: () => {
+        onDeleteTask(task.id);
+      },
+    });
+  };
 
   // Initialize expanded set with existing projects & activeProjectId
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() => {
@@ -96,6 +136,80 @@ export function Sidebar({
   };
 
   const unassignedTasks = tasks.filter((t) => !t.projectId || !projects.some((p) => p.id === t.projectId));
+
+  const renderTaskItem = (task: TaskSummary, isNested: boolean) => {
+    const isEditing = editingTaskId === task.id;
+    return (
+      <div
+        key={task.id}
+        className={`task-item ${isNested ? "nested" : ""} ${activeTaskId === task.id ? "active" : ""}`}
+        onClick={() => {
+          if (!isEditing) onSelectTask(task.id);
+        }}
+      >
+        {isEditing ? (
+          <input
+            ref={renameInputRef}
+            type="text"
+            className="task-rename-input"
+            value={editingTitle}
+            onChange={(e) => setEditingTitle(e.target.value)}
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                commitRename(task.id);
+              } else if (e.key === "Escape") {
+                setEditingTaskId(null);
+              }
+            }}
+            onBlur={() => commitRename(task.id)}
+            autoFocus
+          />
+        ) : (
+          <span
+            className="truncate task-title"
+            title={task.title || t("sidebar.newTaskDefault")}
+            onDoubleClick={(e) => {
+              e.stopPropagation();
+              startRenaming(task);
+            }}
+          >
+            {task.title || t("sidebar.newTaskDefault")}
+          </span>
+        )}
+
+        <div className="task-actions" onClick={(e) => e.stopPropagation()}>
+          {!isEditing && (
+            <button
+              type="button"
+              className="icon-btn task-action-btn rename"
+              onClick={(e) => {
+                e.stopPropagation();
+                startRenaming(task);
+              }}
+              title={t("sidebar.renameTask")}
+            >
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+              </svg>
+            </button>
+          )}
+          <button
+            type="button"
+            className="icon-btn task-action-btn delete"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleDeleteClick(task);
+            }}
+            title={t("sidebar.deleteTask")}
+          >
+            ✕
+          </button>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <aside
@@ -237,29 +351,7 @@ export function Sidebar({
                 {expanded && (
                   <div className="project-tasks">
                     {projectTasks.length > 0 ? (
-                      projectTasks.map((task) => (
-                        <div
-                          key={task.id}
-                          className={`task-item nested ${activeTaskId === task.id ? "active" : ""}`}
-                          onClick={() => onSelectTask(task.id)}
-                        >
-                          <span className="truncate" style={{ maxWidth: "150px" }}>
-                            {task.title || t("sidebar.newTaskDefault")}
-                          </span>
-                          <button
-                            type="button"
-                            className="icon-btn"
-                            style={{ width: "18px", height: "18px", opacity: 0.6 }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onDeleteTask(task.id);
-                            }}
-                            title={t("sidebar.deleteTask")}
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      ))
+                      projectTasks.map((task) => renderTaskItem(task, true))
                     ) : (
                       <div className="list-empty-item">{t("sidebar.noTasks")}</div>
                     )}
@@ -276,29 +368,7 @@ export function Sidebar({
         {unassignedTasks.length > 0 && (
           <>
             <div className="list-section-header">{t("sidebar.ungrouped")}</div>
-            {unassignedTasks.map((task) => (
-              <div
-                key={task.id}
-                className={`task-item ${activeTaskId === task.id ? "active" : ""}`}
-                onClick={() => onSelectTask(task.id)}
-              >
-                <span className="truncate" style={{ maxWidth: "180px" }}>
-                  {task.title || t("sidebar.newTaskDefault")}
-                </span>
-                <button
-                  type="button"
-                  className="icon-btn"
-                  style={{ width: "18px", height: "18px", opacity: 0.6 }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDeleteTask(task.id);
-                  }}
-                  title={t("sidebar.deleteTask")}
-                >
-                  ✕
-                </button>
-              </div>
-            ))}
+            {unassignedTasks.map((task) => renderTaskItem(task, false))}
           </>
         )}
       </div>
@@ -310,6 +380,9 @@ export function Sidebar({
           <span className="user-name-text">{userName || "Tempsyche"}</span>
         </div>
       </div>
+
+      {/* Delete Task Confirmation Dialog */}
+      {dialog && <AppDialog request={dialog} onClose={() => setDialog(null)} />}
     </aside>
   );
 }

@@ -406,6 +406,15 @@ pub fn save_session_messages(
 }
 
 #[tauri::command]
+pub fn rename_session(
+    app: AppHandle,
+    session_id: String,
+    new_title: String,
+) -> Result<storage::SessionSummary, String> {
+    storage::rename_session(&app, &session_id, &new_title)
+}
+
+#[tauri::command]
 pub fn delete_session(app: AppHandle, session_id: String) -> Result<(), String> {
     storage::delete_session(&app, &session_id)
 }

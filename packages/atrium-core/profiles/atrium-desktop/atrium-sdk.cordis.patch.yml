@@ -1,5 +1,5 @@
 # ==============================================================================
-# ATRIUM // 智役中庭 - SDK runtime persona overlay
+# ATRIUM 智役中庭 - SDK runtime persona overlay
 # Applied as an ordered --patch over the `dsh --profile sdk` runtime booted by
 # @atrium/desktop-host. A patch replaces a row's whole `config`, so every owned
 # key is restated here (same convention as upstream's own bundle patches).

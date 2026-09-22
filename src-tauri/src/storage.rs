@@ -359,16 +359,31 @@ pub fn save_session_messages(app: &AppHandle, session_id: &str, messages: &[Chat
     if let Some(s) = sessions.iter_mut().find(|s| s.id == session_id) {
         s.message_count = messages.len();
         s.updated_at = now;
-        if s.title == "新任务" {
-            if let Some(first_user) = messages.iter().find(|m| m.role == "user") {
-                let first_line = first_user.content.lines().next().unwrap_or(&first_user.content);
-                s.title = first_line.chars().take(20).collect();
-            }
-        }
         let _ = save_session_index(app, &sessions);
     }
 
     Ok(())
+}
+
+pub fn rename_session(app: &AppHandle, session_id: &str, new_title: &str) -> Result<SessionSummary, String> {
+    let mut sessions = list_sessions(app)?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    if let Some(s) = sessions.iter_mut().find(|s| s.id == session_id) {
+        let trimmed = new_title.trim();
+        if !trimmed.is_empty() {
+            s.title = trimmed.to_string();
+        }
+        s.updated_at = now;
+        let updated = s.clone();
+        save_session_index(app, &sessions)?;
+        Ok(updated)
+    } else {
+        Err(format!("Session {session_id} not found"))
+    }
 }
 
 pub fn delete_session(app: &AppHandle, session_id: &str) -> Result<(), String> {
@@ -451,17 +466,33 @@ fn save_projects(app: &AppHandle, projects: &[Project]) -> Result<(), String> {
 /// Legacy sessions (no project) are migrated into the default project.
 pub fn ensure_projects(app: &AppHandle) -> Result<Vec<Project>, String> {
     let mut projects = load_projects(app)?;
+    let mut changed = false;
+
     if projects.is_empty() {
         let fallback_dir = config_dir(app)?.to_string_lossy().to_string();
         let default_project = Project {
             id: Uuid::new_v4().to_string(),
-            name: "默认项目".to_string(),
-            description: "自动创建的默认工作项目".to_string(),
+            name: "初始空间".to_string(),
+            description: "自动创建的初始工作空间".to_string(),
             directories: vec![fallback_dir.clone()],
             default_directory: Some(fallback_dir),
             created_at: now_secs(),
         };
         projects.push(default_project);
+        changed = true;
+    } else {
+        for p in projects.iter_mut() {
+            if p.name == "默认项目" {
+                p.name = "初始空间".to_string();
+                if p.description == "自动创建的默认工作项目" {
+                    p.description = "自动创建的初始工作空间".to_string();
+                }
+                changed = true;
+            }
+        }
+    }
+
+    if changed {
         save_projects(app, &projects)?;
     }
 

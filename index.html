@@ -3,11 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>Atrium // 智役中庭</title>
+    <title>Atrium 智役中庭</title>
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
     <link rel="icon" type="image/png" href="/logo.png" />
     <link rel="apple-touch-icon" href="/logo.png" />
-    <!-- Boot splash wordmark is monospace: preload the one font it needs -->
+    <!-- Code font preload -->
     <link rel="preload" href="/fonts/JetBrainsMono-Regular.woff2" as="font" type="font/woff2" crossorigin />
     <style>
       /* Boot splash: pure static markup, visible the moment the webview paints
@@ -20,7 +20,6 @@
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        gap: 18px;
         background: #fcfcfd;
         user-select: none;
       }
@@ -30,12 +29,6 @@
         object-fit: contain;
         animation: boot-breathe 1.6s ease-in-out infinite;
       }
-      #boot-splash .boot-wordmark {
-        font-family: "JetBrains Mono", Consolas, Menlo, monospace;
-        font-size: 12px;
-        letter-spacing: 3px;
-        color: #71717a;
-      }
       @keyframes boot-breathe {
         0%, 100% { opacity: 1; transform: scale(1); }
         50% { opacity: 0.55; transform: scale(0.96); }
@@ -44,7 +37,6 @@
       #root:not(:empty) ~ #boot-splash { display: none; }
       @media (prefers-color-scheme: dark) {
         #boot-splash { background: #161618; }
-        #boot-splash .boot-wordmark { color: #8e8e96; }
       }
     </style>
   </head>
@@ -52,7 +44,6 @@
     <div id="root"></div>
     <div id="boot-splash">
       <img src="/logo.png" alt="Atrium" draggable="false" />
-      <div class="boot-wordmark">ATRIUM // 智役中庭</div>
     </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

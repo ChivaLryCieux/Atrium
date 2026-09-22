@@ -173,7 +173,7 @@ function ProviderModelDropdown({ profiles, activeProfileId, selectedModel, onSel
 }
 
 type PromptCardProps = {
-  projectName: string;
+  projectName?: string;
   projectTooltip?: string;
   placeholder: string;
   draft: string;
@@ -194,8 +194,6 @@ type PromptCardProps = {
 };
 
 export function PromptCard({
-  projectName,
-  projectTooltip,
   placeholder,
   draft,
   setDraft,
@@ -238,13 +236,6 @@ export function PromptCard({
 
   return (
     <div className="prompt-card">
-      {/* Header: static project name */}
-      <div className="prompt-card-header">
-        <span className="project-label" title={projectTooltip}>
-          <span>{projectName}</span>
-        </span>
-      </div>
-
       {/* Text Input Area */}
       <textarea
         className="prompt-textarea"

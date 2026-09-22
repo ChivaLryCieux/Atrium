@@ -17,7 +17,7 @@ const DSH_DIR = resolve(ROOT_DIR, "deepseek-harness");
 const ATRIUM_PROFILE_DIR = resolve(ROOT_DIR, "packages/atrium-core/profiles/atrium-desktop");
 
 console.log("\x1b[36m========================================================\x1b[0m");
-console.log("\x1b[1m[ATRIUM // 智役中庭] UPSTREAM ENGINE SYNC PROTOCOL\x1b[0m");
+console.log("\x1b[1m[ATRIUM 智役中庭] UPSTREAM ENGINE SYNC PROTOCOL\x1b[0m");
 console.log("\x1b[36m========================================================\x1b[0m\n");
 
 // 1. Verify dsh directory

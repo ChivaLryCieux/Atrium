@@ -70,6 +70,7 @@ pub fn run() {
             commands::delete_soul,
             commands::list_sessions,
             commands::create_session,
+            commands::rename_session,
             commands::load_session_messages,
             commands::save_session_messages,
             commands::delete_session,

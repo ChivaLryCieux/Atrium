@@ -6,6 +6,7 @@ type TopBarProps = {
   onToggleSidebar?: () => void;
   onNewTerminal?: () => void;
   onOpenAbout?: () => void;
+  projectName?: string;
 };
 
 export function TopBar({
@@ -13,6 +14,7 @@ export function TopBar({
   onToggleSidebar,
   onNewTerminal,
   onOpenAbout,
+  projectName,
 }: TopBarProps) {
   const { t } = useTranslation();
   const handleMinimize = async () => {
@@ -41,7 +43,7 @@ export function TopBar({
 
   return (
     <header className="top-bar" data-tauri-drag-region>
-      {/* Left: Sidebar Toggle, App Logo */}
+      {/* Left: Sidebar Toggle, App Logo, Project Name */}
       <div className="top-bar-left">
         <div className="app-logo-badge" title="Atrium">
           <img src="/logo.png" alt="Atrium" className="app-logo-icon" />
@@ -58,6 +60,12 @@ export function TopBar({
             <line x1="9" y1="3" x2="9" y2="21" />
           </svg>
         </button>
+
+        {/* Project Name Indicator */}
+        <div className="top-bar-project-title" data-tauri-drag-region>
+          <span className="brand-prefix">Atrium 智役中庭：</span>
+          <span className="project-name-text">{projectName || "初始空间"}</span>
+        </div>
       </div>
 
       {/* Center Draggable Spacer */}

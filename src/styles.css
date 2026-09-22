@@ -202,6 +202,31 @@ button, input, textarea, select, [role="button"], a {
   display: block;
 }
 
+.top-bar-project-title {
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+  line-height: 1;
+  user-select: none;
+  margin-left: 2px;
+  cursor: default;
+}
+
+.top-bar-project-title .brand-prefix {
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.15px;
+}
+
+.top-bar-project-title .project-name-text {
+  font-weight: 500;
+  color: var(--text-secondary);
+  max-width: 260px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .history-nav {
   display: flex;
   align-items: center;
@@ -518,6 +543,64 @@ body.resizing-row * {
   font-weight: 500;
 }
 
+.task-item .task-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.task-item .task-rename-input {
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  padding: 0 5px;
+  font-size: 12.5px;
+  color: var(--text-primary);
+  background: var(--bg-card);
+  border: 1px solid var(--border-focus, #18181b);
+  border-radius: var(--radius-xs, 4px);
+  outline: none;
+  font-family: inherit;
+}
+
+.task-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.task-item:hover .task-actions,
+.task-item.active .task-actions {
+  opacity: 1;
+}
+
+.task-action-btn {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: var(--radius-xs, 4px);
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.task-action-btn:hover {
+  background: var(--bg-pill-hover);
+  color: var(--text-primary);
+}
+
+.task-action-btn.delete:hover {
+  color: var(--accent-danger, #ef4444);
+  background: rgba(239, 68, 68, 0.1);
+}
+
 /* Sidebar Footer / Account Profile */
 .sidebar-footer {
   display: flex;
@@ -628,7 +711,19 @@ body.resizing-row * {
   box-shadow: 0 12px 32px -4px rgba(0, 0, 0, 0.06), 0 4px 12px -2px rgba(0, 0, 0, 0.03);
   user-select: none;
   pointer-events: auto;
+  animation: telemetryFadeIn 0.25s ease-out;
   transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+}
+
+@keyframes telemetryFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 [data-resolved-theme="dark"] .stage-telemetry-hud,

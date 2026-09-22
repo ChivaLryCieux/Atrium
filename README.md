@@ -166,8 +166,8 @@ pnpm run sync:upstream      # 可选：校验内核零污染并检测上游新�
 
 ```powershell
 pnpm tauri:build
-# 产物: src-tauri/target/release/bundle/nsis/Atrium_<版本>_x64-setup.exe
-#       src-tauri/target/release/bundle/msi/Atrium_<版本>_x64_en-US.msi
+# 产物: src-tauri/target/release/bundle/nsis/智役中庭_<版本>_x64-setup.exe
+#       src-tauri/target/release/bundle/msi/智役中庭_<版本>_x64_en-US.msi
 ```
 
 ### 完整包（分发给他人）
@@ -181,7 +181,7 @@ pnpm run bundle:runtime -- --with-kernel
 
 # 3. 打包（附带内核资源映射，仅出 NSIS 安装器）
 pnpm tauri:build:full
-# 产物: src-tauri/target/release/bundle/nsis/Atrium_<版本>_x64-setup.exe
+# 产物: src-tauri/target/release/bundle/nsis/智役中庭_<版本>_x64-setup.exe
 ```
 
 工作机制与注意事项：
@@ -219,7 +219,7 @@ curl http://127.0.0.1:19387/healthz
 | `src-tauri/tauri.conf.json` | `version` |
 | `src-tauri/Cargo.toml` | `version` |
 
-三处必须一致，否则产物文件名（`Atrium_<版本>_x64-setup.exe`）与 `about` 信息会对不上。桥接层的 `/healthz` 版本由 Rust 在启动时传入（`CARGO_PKG_VERSION`），不需要手工同步。
+三处必须一致，否则产物文件名（`智役中庭_<版本>_x64-setup.exe`）与 `about` 信息会对不上。桥接层的 `/healthz` 版本由 Rust 在启动时传入（`CARGO_PKG_VERSION`），不需要手工同步。
 
 ### 2. 判断是否需要重建内核
 
@@ -245,7 +245,7 @@ pnpm tauri:build:full                      # 出完整 NSIS 安装包
 建议静默安装到临时目录实测一次（不污染正式环境）：
 
 ```powershell
-.\Atrium_<版本>_x64-setup.exe /S /D=C:\Users\<你>\AppData\Local\Atrium-verify
+.\智役中庭_<版本>_x64-setup.exe /S /D=C:\Users\<你>\AppData\Local\Atrium-verify
 curl http://127.0.0.1:19387/healthz
 # 确认 kernel: ready 后，运行安装目录下的 uninstall.exe /S 卸载
 ```

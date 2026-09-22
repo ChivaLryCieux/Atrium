@@ -8,7 +8,7 @@ type AboutDialogProps = {
 };
 
 export function AboutDialog({ onClose }: AboutDialogProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [tab, setTab] = useState<AboutTab>("about");
 
   return (
@@ -18,23 +18,21 @@ export function AboutDialog({ onClose }: AboutDialogProps) {
           <span className="modal-title">
             {tab === "about" ? t("about.aboutTitle") : t("about.charterTitle")}
           </span>
-          <button type="button" className="icon-btn" onClick={onClose}>
-            ✕
+          <button className="modal-close" onClick={onClose}>
+            &times;
           </button>
         </div>
 
         {/* Tab switch: 关于 Atrium / 智役宪章 */}
-        <div className="about-tabs">
+        <div className="tab-switch">
           <button
-            type="button"
-            className={`about-tab ${tab === "about" ? "active" : ""}`}
+            className={`tab-btn ${tab === "about" ? "active" : ""}`}
             onClick={() => setTab("about")}
           >
             {t("about.aboutTab")}
           </button>
           <button
-            type="button"
-            className={`about-tab ${tab === "charter" ? "active" : ""}`}
+            className={`tab-btn ${tab === "charter" ? "active" : ""}`}
             onClick={() => setTab("charter")}
           >
             {t("about.charterTab")}
@@ -45,7 +43,7 @@ export function AboutDialog({ onClose }: AboutDialogProps) {
           {tab === "about" ? (
             <>
               <div className="about-meta">
-                <span>ATRIUM // {t("common.brandName")} — AI Agent Harness Terminal</span>
+                <span>{i18n.language === "zh-CN" ? `Atrium ${t("common.brandName")}` : t("common.brandName")} — AI Agent Harness Terminal</span>
                 <span>{t("about.version", { version: "v0.2.0" })}</span>
                 <span>{t("about.kernelLine")}</span>
               </div>

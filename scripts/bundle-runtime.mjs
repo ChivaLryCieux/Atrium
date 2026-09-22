@@ -121,7 +121,7 @@ function removeTree(dir) {
 // 1. Preconditions ---------------------------------------------------------
 
 console.log("\x1b[36m========================================================\x1b[0m");
-console.log("\x1b[1m[ATRIUM // 智役中庭] RUNTIME STAGING\x1b[0m");
+console.log("\x1b[1m[ATRIUM 智役中庭] RUNTIME STAGING\x1b[0m");
 console.log(`\x1b[36m========================================================\x1b[0m\n`);
 
 if (!existsSync(resolve(ROOT_DIR, "dist/index.html"))) {

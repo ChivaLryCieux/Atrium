@@ -99,7 +99,7 @@ function git(args, cwd) {
 // 1. Workspace: disposable local clone of the vendored checkout -------------
 
 console.log("\x1b[36m========================================================\x1b[0m");
-console.log("\x1b[1m[ATRIUM // 智役中庭] KERNEL RUNTIME BUILD\x1b[0m");
+console.log("\x1b[1m[ATRIUM 智役中庭] KERNEL RUNTIME BUILD\x1b[0m");
 console.log(`\x1b[36m========================================================\x1b[0m`);
 
 if (!existsSync(DSH_DIR)) fail(`vendored checkout missing: ${DSH_DIR} (run \`pnpm run sync:upstream\`)`);
