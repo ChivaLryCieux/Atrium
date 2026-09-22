@@ -237,101 +237,129 @@ export const StageTelemetryHud: React.FC<StageTelemetryHudProps> = ({
     return 0;
   }, [messages, isStreaming, streamElapsedSec]);
 
-  const [isExpanded, setIsExpanded] = useState<boolean>(false);
+  // HUD Display States:
+  // "default": 3 slots (Tokens, Context Gauge, Star)
+  // "expanded": 3 slots + Extended stats (Average output speed)
+  // "minimal": Panel background disappears, Slots 1 & 2 collapse, Star glides up to the top-right
+  const [displayState, setDisplayState] = useState<"default" | "expanded" | "minimal">("default");
+  const [spinTrigger, setSpinTrigger] = useState<number>(0);
+
+  const cycleDisplayState = () => {
+    setSpinTrigger((prev) => prev + 1);
+    setDisplayState((prev) => {
+      if (prev === "default") return "expanded";
+      if (prev === "expanded") return "minimal";
+      return "default";
+    });
+  };
+
+  const starTooltip = useMemo(() => {
+    if (displayState === "default") return t("stage.clickToExpand");
+    if (displayState === "expanded") return t("stage.clickToMinimize");
+    return t("stage.clickToRestore");
+  }, [displayState, t]);
 
   return (
     <div
-      className={`stage-telemetry-hud ${isStreaming ? "is-streaming" : ""} ${isExpanded ? "is-expanded" : ""}`}
-      title={t("stage.ratioTooltip", {
+      className={`stage-telemetry-hud state-${displayState} ${isStreaming ? "is-streaming" : ""}`}
+      title={displayState === "minimal" ? starTooltip : t("stage.ratioTooltip", {
         current: tokensUsed.toLocaleString(),
         ceiling: ceiling.label,
         percent: percentUsed.toFixed(1),
       })}
     >
       {/* ── Chart 1: 词元使用统计 (Token usage) ── */}
-      <div className="telemetry-chart telemetry-tokens-chart">
-        <div className="telemetry-header">
-          <span className="telemetry-label">{t("stage.tokensUsed")}</span>
-        </div>
-        <div
-          className="telemetry-big-number biolinum-figure"
-          title={`${tokensUsed.toLocaleString()} tokens`}
-        >
-          {tokensUsed.toLocaleString()}
-        </div>
-      </div>
-
-      {/* Subtle Horizontal Divider */}
-      <div className="telemetry-divider" />
-
-      {/* ── Chart 2: 上下文长度 (Context length circular ring) ── */}
-      <div className="telemetry-chart telemetry-context-chart">
-        <div className="telemetry-header">
-          <span className="telemetry-label">{t("stage.contextLength")}</span>
-        </div>
-        <div className="telemetry-gauge-container">
-          <svg
-            className="telemetry-circular-gauge"
-            width="92"
-            height="92"
-            viewBox="0 0 92 92"
+      <div className="telemetry-collapsible-item telemetry-slot-1">
+        <div className="telemetry-chart telemetry-tokens-chart">
+          <div className="telemetry-header">
+            <span className="telemetry-label">{t("stage.tokensUsed")}</span>
+          </div>
+          <div
+            className="telemetry-big-number biolinum-figure"
+            title={`${tokensUsed.toLocaleString()} tokens`}
           >
-            {/* Background track circle */}
-            <circle
-              className="gauge-bg-circle"
-              cx="46"
-              cy="46"
-              r={radius}
-              strokeWidth="7"
-            />
-            {/* Active progress ring */}
-            <circle
-              className="gauge-progress-circle"
-              cx="46"
-              cy="46"
-              r={radius}
-              strokeWidth="7"
-              stroke={ringColor}
-              strokeDasharray={circumference}
-              strokeDashoffset={strokeDashoffset}
-              strokeLinecap="round"
-              transform="rotate(-90 46 46)"
-            />
-          </svg>
-
-          {/* Centered Ratio Text inside the Ring */}
-          <div className="gauge-inner-text">
-            <span className="gauge-current-val biolinum-figure">
-              {formatContextTokens(tokensUsed)}
-            </span>
-            <span className="gauge-divider-ceiling">
-              /{ceiling.label}
-            </span>
+            {tokensUsed.toLocaleString()}
           </div>
         </div>
       </div>
 
-      {/* Subtle Horizontal Divider */}
-      <div className="telemetry-divider" />
+      {/* Subtle Horizontal Divider 1 */}
+      <div className="telemetry-collapsible-item telemetry-divider-slot">
+        <div className="telemetry-divider" />
+      </div>
 
-      {/* ── Chart 3: 更多统计数据 (More stats / Interactive Star 3D Model) ── */}
+      {/* ── Chart 2: 上下文长度 (Context length circular ring) ── */}
+      <div className="telemetry-collapsible-item telemetry-slot-2">
+        <div className="telemetry-chart telemetry-context-chart">
+          <div className="telemetry-header">
+            <span className="telemetry-label">{t("stage.contextLength")}</span>
+          </div>
+          <div className="telemetry-gauge-container">
+            <svg
+              className="telemetry-circular-gauge"
+              width="92"
+              height="92"
+              viewBox="0 0 92 92"
+            >
+              {/* Background track circle */}
+              <circle
+                className="gauge-bg-circle"
+                cx="46"
+                cy="46"
+                r={radius}
+                strokeWidth="7"
+              />
+              {/* Active progress ring */}
+              <circle
+                className="gauge-progress-circle"
+                cx="46"
+                cy="46"
+                r={radius}
+                strokeWidth="7"
+                stroke={ringColor}
+                strokeDasharray={circumference}
+                strokeDashoffset={strokeDashoffset}
+                strokeLinecap="round"
+                transform="rotate(-90 46 46)"
+              />
+            </svg>
+
+            {/* Centered Ratio Text inside the Ring */}
+            <div className="gauge-inner-text">
+              <span className="gauge-current-val biolinum-figure">
+                {formatContextTokens(tokensUsed)}
+              </span>
+              <span className="gauge-divider-ceiling">
+                /{ceiling.label}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Subtle Horizontal Divider 2 */}
+      <div className="telemetry-collapsible-item telemetry-divider-slot">
+        <div className="telemetry-divider" />
+      </div>
+
+      {/* ── Chart 3: 更多统计数据 (Interactive Star 3D Model) ── */}
       <div
-        className={`telemetry-chart telemetry-star-chart ${isExpanded ? "is-expanded" : ""}`}
-        onClick={() => setIsExpanded((prev) => !prev)}
+        className={`telemetry-chart telemetry-star-chart state-${displayState}`}
+        onClick={cycleDisplayState}
         role="button"
         tabIndex={0}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
-            setIsExpanded((prev) => !prev);
+            cycleDisplayState();
           }
         }}
-        title={t("stage.moreStatsTooltip")}
+        title={starTooltip}
       >
-        <div className="telemetry-header telemetry-interactive-header">
+        <div className="telemetry-header telemetry-interactive-header telemetry-collapsible-header">
           <span className="telemetry-label">{t("stage.moreStats")}</span>
           <svg
-            className={`telemetry-expand-chevron ${isExpanded ? "is-expanded" : ""}`}
+            className={`telemetry-expand-chevron ${displayState === "expanded" ? "is-expanded" : ""}`}
             width="12"
             height="12"
             viewBox="0 0 24 24"
@@ -341,16 +369,19 @@ export const StageTelemetryHud: React.FC<StageTelemetryHudProps> = ({
             strokeLinecap="round"
             strokeLinejoin="round"
           >
-            <polyline points="6 9 12 15 18 9" />
+            <polyline points="15 18 9 12 15 6" />
           </svg>
         </div>
         <div className="telemetry-star-wrapper">
-          <StarModelViewer isRotating={isStreaming || messages.some((m) => m.pending)} />
+          <StarModelViewer
+            isRotating={isStreaming || messages.some((m) => m.pending)}
+            spinTrigger={spinTrigger}
+          />
         </div>
       </div>
 
-      {/* ── Extended Metrics Section (revealed when Star is clicked) ── */}
-      <div className={`telemetry-extended-container ${isExpanded ? "is-open" : ""}`}>
+      {/* ── Extended Metrics Section (revealed in "expanded" state) ── */}
+      <div className={`telemetry-extended-container ${displayState === "expanded" ? "is-open" : ""}`}>
         {/* Subtle Horizontal Divider */}
         <div className="telemetry-divider" />
 

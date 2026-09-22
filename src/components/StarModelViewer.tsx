@@ -73,12 +73,21 @@ function applyColorfulShading(mesh: THREE.Mesh) {
 
 interface StarMeshProps {
   isRotating: boolean;
+  spinTrigger?: number;
 }
 
-const StarMesh: React.FC<StarMeshProps> = ({ isRotating }) => {
+const StarMesh: React.FC<StarMeshProps> = ({ isRotating, spinTrigger }) => {
   const groupRef = useRef<THREE.Group>(null);
   const [modelScene, setModelScene] = useState<THREE.Group | null>(null);
   const currentSpeedRef = useRef<number>(0);
+  const boostRef = useRef<number>(0);
+
+  // Trigger energetic spin whenever clicked or moving between states
+  useEffect(() => {
+    if (spinTrigger && spinTrigger > 0) {
+      boostRef.current = 6.8;
+    }
+  }, [spinTrigger]);
 
   useEffect(() => {
     let active = true;
@@ -128,9 +137,16 @@ const StarMesh: React.FC<StarMeshProps> = ({ isRotating }) => {
   }, []);
 
   useFrame((_, delta) => {
-    // Smooth acceleration during reasoning, graceful deceleration when idle
-    const targetSpeed = isRotating ? 2.4 : 0;
-    currentSpeedRef.current += (targetSpeed - currentSpeedRef.current) * Math.min(1, delta * 4.5);
+    // Gracefully decay the click/move spin boost over ~1.2s
+    if (boostRef.current > 0.005) {
+      boostRef.current *= Math.exp(-delta * 2.4);
+    } else {
+      boostRef.current = 0;
+    }
+
+    const baseSpeed = isRotating ? 2.4 : 0;
+    const targetSpeed = baseSpeed + boostRef.current;
+    currentSpeedRef.current += (targetSpeed - currentSpeedRef.current) * Math.min(1, delta * 5.0);
 
     if (groupRef.current && Math.abs(currentSpeedRef.current) > 0.0005) {
       groupRef.current.rotation.y += currentSpeedRef.current * delta;
@@ -152,9 +168,13 @@ const StarMesh: React.FC<StarMeshProps> = ({ isRotating }) => {
 
 export interface StarModelViewerProps {
   isRotating?: boolean;
+  spinTrigger?: number;
 }
 
-export const StarModelViewer: React.FC<StarModelViewerProps> = ({ isRotating = false }) => {
+export const StarModelViewer: React.FC<StarModelViewerProps> = ({
+  isRotating = false,
+  spinTrigger,
+}) => {
   return (
     <div className="telemetry-star-canvas-wrapper">
       <Canvas
@@ -166,7 +186,7 @@ export const StarModelViewer: React.FC<StarModelViewerProps> = ({ isRotating = f
         <directionalLight position={[4, 6, 5]} intensity={1.8} />
         <directionalLight position={[-4, -3, -3]} intensity={0.9} color="#fb7185" />
         <pointLight position={[0, 0, 3.5]} intensity={1.1} color="#fde047" />
-        <StarMesh isRotating={isRotating} />
+        <StarMesh isRotating={isRotating} spinTrigger={spinTrigger} />
       </Canvas>
     </div>
   );

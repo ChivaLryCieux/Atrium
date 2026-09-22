@@ -52,6 +52,9 @@
     "tokensPerSec": "tokens/s",
     "moreStats": "More statistics:",
     "moreStatsTooltip": "Click to toggle more statistics",
+    "clickToExpand": "Click to view more statistics",
+    "clickToMinimize": "Click to collapse to floating Star",
+    "clickToRestore": "Click to restore telemetry panel",
     "reasoningStar": "Agent Orbit:",
     "streaming": "Streaming live",
     "ratioTooltip": "Context tokens: {{current}} / Ceiling: {{ceiling}} ({{percent}}%)"

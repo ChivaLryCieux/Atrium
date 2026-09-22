@@ -52,6 +52,9 @@
     "tokensPerSec": "词元/秒",
     "moreStats": "更多统计数据：",
     "moreStatsTooltip": "点击展开/收起更多统计数据",
+    "clickToExpand": "点击展开更多统计数据",
+    "clickToMinimize": "点击收缩为极简悬浮星",
+    "clickToRestore": "点击恢复统计面板",
     "reasoningStar": "推理姿态：",
     "streaming": "实时更新中",
     "ratioTooltip": "当前上下文：{{current}} 词元 / 上限：{{ceiling}} ({{percent}}%)"
