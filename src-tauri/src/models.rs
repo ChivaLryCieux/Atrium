@@ -76,7 +76,7 @@ pub struct AppSettings {
 }
 
 fn default_orchestration_mode() -> String {
-    "dag".to_string()
+    "single".to_string()
 }
 
 fn default_api_protocol() -> String {

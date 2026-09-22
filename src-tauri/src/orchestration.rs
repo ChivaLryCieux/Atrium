@@ -1,5 +1,7 @@
 use reqwest::Client;
 use serde::Serialize;
+use std::collections::HashMap;
+use std::sync::OnceLock;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -10,6 +12,46 @@ use crate::messages::to_api_messages;
 use crate::models::{
     AiProfile, ChatMessage, OrchestrationProgress, OrchestrationStage,
 };
+
+// ─── Default single-conversation engine ────────────────────────
+//
+// The default orchestration is a plain single dialogue (like Codex):
+// one active profile answers in one kernel session. The selected
+// persona (Souls/<folder>/SOUL.md) is injected as prompt text together
+// with the operator's first message of each task (Session), then the
+// kernel owns multi-turn context and later turns send only the new
+// user input.
+//
+// The DAG / parallel pipelines below are kept as legacy products and
+// are only used when the stored mode explicitly selects them.
+//
+// Route changes (model / reasoning / credential / endpoint / workspace)
+// reset the kernel session on the bridge side (see routeKey in
+// @atrium/desktop-host), which would silently drop the persona. To keep
+// the invariant "every fresh kernel session starts with the persona",
+// the Rust side remembers the route fingerprint it last seeded per
+// conversation and re-injects the SOUL.md + system prompt once whenever
+// the fingerprint differs. Soul switches mid-task intentionally do NOT
+// re-inject: the newly selected persona takes effect on the next task.
+//
+// Fingerprint fields mirror the bridge routeKey exactly (provider,
+// model, reasoning, credential hash, base URL, workspace): anything
+// that changes the bridge runtime/session binding must change this
+// fingerprint as well.
+
+/// Remembers, per Atrium conversation, the route fingerprint that was
+/// last seeded with the persona. Process-local: a restart clears it,
+/// which only causes one extra seed prompt on the next turn — the safe
+/// direction (missing persona is worse than a redundant one).
+static SINGLE_ROUTE_CACHE: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
+
+fn single_route_cache() -> &'static Mutex<HashMap<String, String>> {
+    SINGLE_ROUTE_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// Upper bound for the route cache; conversations are lightweight keys
+/// and old entries are dropped opportunistically.
+const SINGLE_ROUTE_CACHE_CAP: usize = 512;
 
 // ─── Stage templates ───────────────────────────────────────────
 
@@ -160,11 +202,15 @@ pub async fn execute(
         let conversation = conversation_id.unwrap_or_else(|| format!("adhoc-{}", Uuid::new_v4()));
         if mode == "parallel" {
             execute_parallel_kernel(app, kernel_http, profiles, base_messages, &conversation, reasoning_effort, execution_mode, project, soul).await
+        } else if mode == "single" {
+            execute_single_kernel(app, kernel_http, profiles, base_messages, &conversation, reasoning_effort, execution_mode, project, soul).await
         } else {
             execute_dag_kernel(app, kernel_http, profiles, base_messages, &conversation, reasoning_effort, execution_mode, project, soul).await
         }
     } else if mode == "parallel" {
         execute_parallel(http, profiles, base_messages, project, soul).await
+    } else if mode == "single" {
+        execute_single_direct(app, http, profiles, base_messages, project, soul).await
     } else {
         execute_dag(app, http, profiles, base_messages, project, soul).await
     }
@@ -422,6 +468,260 @@ fn record_turn_usage(
         .unwrap_or_else(|| crate::tokens::estimate_tokens(&turn.final_response));
     let project_ctx = project.map(|(id, name, _)| (id, name));
     crate::tokens::record_usage(app, model, prompt_tokens, completion_tokens, latency_ms, project_ctx);
+}
+
+/// Whether the task already holds a settled (non-pending, non-error)
+/// assistant reply. Used by the single engine's seed rule.
+fn has_settled_assistant(messages: &[ChatMessage]) -> bool {
+    messages
+        .iter()
+        .any(|m| m.role == "assistant" && !m.pending && !m.error)
+}
+
+/// Route fingerprint mirroring the bridge `routeKey` (provider, model,
+/// reasoning, credential, base URL, workspace). The Soul content is
+/// deliberately excluded: switching persona mid-task must NOT reseed.
+fn single_route_fingerprint(
+    profile: &AiProfile,
+    reasoning_effort: Option<&str>,
+    workspace: Option<&str>,
+) -> String {
+    format!(
+        "deepseek-official|{}|{}|{}|{}|{}",
+        profile.model.trim(),
+        reasoning_effort.unwrap_or_default().trim(),
+        profile.api_key.trim(),
+        normalize_base_url(&profile.endpoint).unwrap_or_default(),
+        workspace.unwrap_or_default().trim(),
+    )
+}
+
+/// Build the single-engine kernel prompt. On seed turns the persona
+/// (SOUL.md + supplier system prompt) is prepended once as prompt text
+/// ahead of the operator's first message; later turns send only the new
+/// user input verbatim so the kernel session carries the context.
+fn single_kernel_prompt(
+    user_input: &str,
+    soul: Option<&str>,
+    system_prompt: &str,
+    seed: bool,
+) -> String {
+    if !seed {
+        return user_input.to_string();
+    }
+    let mut prompt = String::new();
+    if let Some(s) = soul.map(str::trim).filter(|s| !s.is_empty()) {
+        prompt.push_str(&format!("[人格设定]\n{s}\n\n"));
+    }
+    if !system_prompt.trim().is_empty() {
+        prompt.push_str(&format!("[算子准则]\n{}\n\n", system_prompt.trim()));
+    }
+    prompt.push_str(&format!("[操作员输入]\n{user_input}"));
+    prompt
+}
+
+/// Direct-API fallback for the single engine. The stateless HTTP channel
+/// cannot hold persona context, so the soul + system prompt travel as a
+/// real `system` role message on every turn; the kernel route above is
+/// the reference behaviour (seed once per task).
+async fn execute_single_direct(
+    app: &AppHandle,
+    http: &Client,
+    profiles: &[AiProfile],
+    base_messages: &[ChatMessage],
+    project: Option<(&str, &str, Option<&str>)>,
+    soul: Option<&str>,
+) -> Vec<ChatMessage> {
+    let Some(profile) = profiles.first() else {
+        return vec![];
+    };
+    let mut seeded = profile.clone();
+    let mut system = String::new();
+    if let Some(s) = soul.map(str::trim).filter(|s| !s.is_empty()) {
+        system.push_str(&format!("[人格设定]\n{s}\n\n"));
+    }
+    if !seeded.system_prompt.trim().is_empty() {
+        system.push_str(seeded.system_prompt.trim());
+    }
+    seeded.system_prompt = system;
+
+    let api_messages = to_api_messages(base_messages, Some(&seeded));
+    let start_time = std::time::Instant::now();
+    let message_id = Uuid::new_v4().to_string();
+    match send_chat(http, &seeded, &api_messages).await {
+        Ok(response) => {
+            let latency = start_time.elapsed().as_millis() as u64;
+            crate::tokens::record_usage(
+                app,
+                &profile.model,
+                crate::tokens::estimate_tokens(&seeded.system_prompt)
+                    + api_messages
+                        .iter()
+                        .map(|m| crate::tokens::estimate_tokens(&m.content))
+                        .sum::<usize>(),
+                crate::tokens::estimate_tokens(&response.content),
+                latency,
+                project.map(|(id, name, _)| (id, name)),
+            );
+            vec![ChatMessage {
+                id: message_id,
+                role: "assistant".to_string(),
+                content: response.content,
+                speaker_id: Some(profile.id.clone()),
+                speaker_name: profile.name.clone(),
+                avatar: profile.avatar.clone(),
+                pending: false,
+                error: false,
+            }]
+        }
+        Err(err) => vec![ChatMessage {
+            id: message_id,
+            role: "assistant".to_string(),
+            content: err.to_string(),
+            speaker_id: Some(profile.id.clone()),
+            speaker_name: profile.name.clone(),
+            avatar: profile.avatar.clone(),
+            pending: false,
+            error: true,
+        }],
+    }
+}
+
+/// Default single-conversation kernel turn: one profile, one kernel
+/// session, persona seeded once per task (plus once per route change).
+async fn execute_single_kernel(
+    app: &AppHandle,
+    http: &Client,
+    profiles: &[AiProfile],
+    base_messages: &[ChatMessage],
+    conversation: &str,
+    reasoning_effort: Option<String>,
+    execution_mode: Option<String>,
+    project: Option<(&str, &str, Option<&str>)>,
+    soul: Option<&str>,
+) -> Vec<ChatMessage> {
+    let Some(profile) = profiles.first() else {
+        return vec![];
+    };
+    let daemon_url = "http://127.0.0.1:19387";
+    let user_input = latest_user_input(base_messages);
+    let workspace = project.and_then(|(_, _, dir)| dir.map(str::to_string));
+    let fingerprint = single_route_fingerprint(
+        profile,
+        reasoning_effort.as_deref(),
+        workspace.as_deref(),
+    );
+    // Seed rule: no settled assistant reply yet (new task, or a retry
+    // before any answer landed), OR the route changed since the last
+    // seed (the bridge reset the kernel session), OR the process
+    // restarted (cache miss while history already exists — the seeded
+    // turn predates this process, so re-seed rather than lose persona).
+    let settled = has_settled_assistant(base_messages);
+    let rerouted = single_route_cache()
+        .lock()
+        .await
+        .get(conversation)
+        .map(|seeded| seeded != &fingerprint)
+        .unwrap_or(settled);
+    let seed = !settled || rerouted;
+    let prompt = single_kernel_prompt(&user_input, soul, &profile.system_prompt, seed);
+    let stage_id = format!("{}-single", profile.id);
+
+    let _ = app.emit(
+        "orchestration-progress",
+        OrchestrationProgress {
+            stage_id: stage_id.clone(),
+            stage_title: profile.name.clone(),
+            profile_name: profile.name.clone(),
+            status: "running".to_string(),
+            content: None,
+            message_id: None,
+        },
+    );
+
+    let request = KernelTurnRequest {
+        conversation_id: conversation.to_string(),
+        stage_id: Some(stage_id.clone()),
+        provider: "deepseek-official".to_string(),
+        model: profile.model.clone(),
+        api_key: profile.api_key.clone(),
+        base_url: normalize_base_url(&profile.endpoint),
+        reasoning_effort,
+        workspace,
+        execution_mode,
+        prompt: prompt.clone(),
+    };
+
+    let start_time = std::time::Instant::now();
+    match post_turn(http, daemon_url, &request, std::time::Duration::from_secs(600)).await {
+        Ok(turn) => {
+            let latency = start_time.elapsed().as_millis() as u64;
+            record_turn_usage(
+                app,
+                &profile.model,
+                &prompt,
+                &turn,
+                latency,
+                project,
+            );
+            // Cache the seeded route only after a successful turn: a
+            // failed seed must retry with the persona instead of being
+            // mistaken for an established session.
+            if seed {
+                let mut cache = single_route_cache().lock().await;
+                if cache.len() >= SINGLE_ROUTE_CACHE_CAP {
+                    cache.clear();
+                }
+                cache.insert(conversation.to_string(), fingerprint);
+            }
+            let reply = ChatMessage {
+                id: stage_id.clone(),
+                role: "assistant".to_string(),
+                content: turn.final_response.clone(),
+                speaker_id: Some(profile.id.clone()),
+                speaker_name: profile.name.clone(),
+                avatar: profile.avatar.clone(),
+                pending: false,
+                error: false,
+            };
+            let _ = app.emit(
+                "orchestration-progress",
+                OrchestrationProgress {
+                    stage_id: stage_id.clone(),
+                    stage_title: profile.name.clone(),
+                    profile_name: profile.name.clone(),
+                    status: "completed".to_string(),
+                    content: Some(reply.content.clone()),
+                    message_id: Some(reply.id.clone()),
+                },
+            );
+            vec![reply]
+        }
+        Err(err) => {
+            let reply = ChatMessage {
+                id: stage_id.clone(),
+                role: "assistant".to_string(),
+                content: err.clone(),
+                speaker_id: Some(profile.id.clone()),
+                speaker_name: profile.name.clone(),
+                avatar: profile.avatar.clone(),
+                pending: false,
+                error: true,
+            };
+            let _ = app.emit(
+                "orchestration-progress",
+                OrchestrationProgress {
+                    stage_id: stage_id.clone(),
+                    stage_title: profile.name.clone(),
+                    profile_name: profile.name.clone(),
+                    status: "error".to_string(),
+                    content: Some(err),
+                    message_id: Some(reply.id.clone()),
+                },
+            );
+            vec![reply]
+        }
+    }
 }
 
 async fn execute_parallel_kernel(

@@ -459,8 +459,22 @@ export function App() {
 
     // One pending bubble per pipeline node; its id equals the stage id so the
     // kernel's streamed deltas and settled replies land in the same node.
-    const pendingMessages: PendingMessage[] =
-      orchestrationStages.length > 0
+    // Single mode has exactly one deterministic node id (`<profile>-single`,
+    // mirroring the backend), so streaming matches without a random UUID.
+    const isSingleMode = settings.orchestrationMode === "single";
+    const pendingMessages: PendingMessage[] = isSingleMode
+      ? [
+          {
+            id: `${activeProfile.id}-single`,
+            role: "assistant" as const,
+            content: t("app.thinking"),
+            speakerId: activeProfile.id,
+            speakerName: activeProfile.name,
+            avatar: activeProfile.avatar,
+            pending: true as const,
+          },
+        ]
+      : orchestrationStages.length > 0
         ? orchestrationStages.map((stage) => ({
             id: stage.id,
             role: "assistant" as const,

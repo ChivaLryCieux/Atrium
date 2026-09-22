@@ -332,6 +332,7 @@ export function SettingsView({
                       })
                     }
                   >
+                    <option value="single">{t("settings.orchestrationSingle")}</option>
                     <option value="dag">{t("settings.orchestrationDag")}</option>
                     <option value="parallel">{t("settings.orchestrationParallel")}</option>
                   </select>

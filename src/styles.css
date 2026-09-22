@@ -2270,6 +2270,8 @@ body.resizing-row * {
   top: calc(100% + 8px);
   left: 0;
   min-width: 176px;
+  max-height: 260px;
+  overflow-y: auto;
   background: var(--bg-card);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-lg);
@@ -2278,6 +2280,15 @@ body.resizing-row * {
   z-index: 40;
   display: flex;
   flex-direction: column;
+}
+
+/* Docked (in-conversation) input sits at the viewport bottom: its pill
+   menus would be clipped by the bottom edge, so they flip upward and
+   overlay the message stream instead. The centered home card keeps the
+   default downward direction where there is room below. */
+.chat-docked-input .pill-dropdown-menu {
+  top: auto;
+  bottom: calc(100% + 8px);
 }
 
 .pill-dropdown-item {

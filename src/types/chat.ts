@@ -23,7 +23,7 @@ export type AiProfile = {
   temperature: number;
 };
 
-export type OrchestrationMode = "parallel" | "dag";
+export type OrchestrationMode = "single" | "parallel" | "dag";
 
 export type ReasoningEffort = "off" | "low" | "high" | "max";
 

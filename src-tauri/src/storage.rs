@@ -81,7 +81,7 @@ fn default_settings() -> AppSettings {
     AppSettings {
         user_name: "我".to_string(),
         ai_profiles: vec![default_profile()],
-        orchestration_mode: "dag".to_string(),
+        orchestration_mode: "single".to_string(),
         reasoning_effort: None,
         theme_mode: Some("light".to_string()),
         font_size: Some("14px".to_string()),
@@ -110,8 +110,16 @@ fn normalize_settings(mut settings: AppSettings) -> AppSettings {
     if settings.ai_profiles.is_empty() {
         settings.ai_profiles = vec![default_profile()];
     }
-    if settings.orchestration_mode != "dag" && settings.orchestration_mode != "parallel" {
-        settings.orchestration_mode = "dag".to_string();
+    // Default engine is the single dialogue; dag / parallel are legacy
+    // products kept for explicit opt-in. A stored "dag" is migrated to the
+    // new default because "dag" used to be the only default (indistinguishable
+    // from an explicit choice); "parallel" was always opt-in and is kept.
+    // Anything unrecognized (e.g. hand-edited configs) falls back to default.
+    if settings.orchestration_mode == "dag"
+        || (settings.orchestration_mode != "single"
+            && settings.orchestration_mode != "parallel")
+    {
+        settings.orchestration_mode = "single".to_string();
     }
     for profile in &mut settings.ai_profiles {
         // Legacy settings carry a single `model` string and no list.
