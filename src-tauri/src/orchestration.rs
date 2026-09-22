@@ -403,8 +403,9 @@ fn kernel_stage_prompt(stage: &OrchestrationStage, index: usize, user_input: &st
         if let Some(soul) = soul.map(str::trim).filter(|s| !s.is_empty()) {
             prompt.push_str(&format!("[人格设定]\n{soul}\n\n"));
         }
-        if !persona.is_empty() {
-            prompt.push_str(&format!("[算子准则]\n{persona}\n\n"));
+        let guidance = web_access_guidance(&stage.profile.endpoint);
+        if !guidance.is_empty() || !persona.is_empty() {
+            prompt.push_str(&format!("[算子准则]\n{}{}\n\n", guidance, persona));
         }
         prompt.push_str(&format!(
             "[节点指令] {}\n\n[操作员输入]\n{}",
@@ -594,6 +595,24 @@ fn single_route_fingerprint(
     )
 }
 
+/// Check whether an endpoint corresponds to official DeepSeek services.
+fn is_official_deepseek(endpoint: &str) -> bool {
+    let ep = endpoint.trim().to_lowercase();
+    ep.is_empty() || ep.contains("api.deepseek.com")
+}
+
+/// Dynamic web-access instructions injected based on the provider/endpoint:
+/// Official DeepSeek has native web search credentials; third-party endpoints
+/// (such as StepFun, Moonshot, OpenAI proxies) lack DeepSeek web_search authentication
+/// and should use web_fetch for direct page access.
+fn web_access_guidance(endpoint: &str) -> &'static str {
+    if is_official_deepseek(endpoint) {
+        ""
+    } else {
+        "[网络访问准则]\n当前运行于第三方模型服务，请使用 `web_fetch` 工具抓取、阅读与分析指定网页或资讯 URL；避免调用需要 DeepSeek 官方搜索凭据的 `web_search` 工具。若需获取外部实时信息，请明确目标网址后通过 `web_fetch` 抓取。\n\n"
+    }
+}
+
 /// Build the single-engine kernel prompt. On seed turns the persona
 /// (SOUL.md + supplier system prompt) is prepended once as prompt text
 /// ahead of the operator's first message; later turns send only the new
@@ -602,6 +621,7 @@ fn single_kernel_prompt(
     user_input: &str,
     soul: Option<&str>,
     system_prompt: &str,
+    endpoint: &str,
     seed: bool,
 ) -> String {
     if !seed {
@@ -611,8 +631,10 @@ fn single_kernel_prompt(
     if let Some(s) = soul.map(str::trim).filter(|s| !s.is_empty()) {
         prompt.push_str(&format!("[人格设定]\n{s}\n\n"));
     }
-    if !system_prompt.trim().is_empty() {
-        prompt.push_str(&format!("[算子准则]\n{}\n\n", system_prompt.trim()));
+    let guidance = web_access_guidance(endpoint);
+    let trimmed_persona = system_prompt.trim();
+    if !guidance.is_empty() || !trimmed_persona.is_empty() {
+        prompt.push_str(&format!("[算子准则]\n{}{}\n\n", guidance, trimmed_persona));
     }
     prompt.push_str(&format!("[操作员输入]\n{user_input}"));
     prompt
@@ -732,7 +754,7 @@ async fn execute_single_kernel(
         .map(|seeded| seeded != &fingerprint)
         .unwrap_or(settled);
     let seed = !settled || rerouted;
-    let prompt = single_kernel_prompt(&user_input, soul, &profile.system_prompt, seed);
+    let prompt = single_kernel_prompt(&user_input, soul, &profile.system_prompt, &profile.endpoint, seed);
     let stage_id = format!("{}-single", profile.id);
 
     let _ = app.emit(
@@ -867,7 +889,12 @@ async fn execute_parallel_kernel(
     let futures = profiles.iter().enumerate().map(|(index, profile)| {
         let conversation = format!("{conversation}::parallel-{index}");
         let persona = profile.system_prompt.trim();
-        let persona_block = if persona.is_empty() { String::new() } else { format!("[算子准则]\n{persona}\n\n") };
+        let guidance = web_access_guidance(&profile.endpoint);
+        let persona_block = if persona.is_empty() && guidance.is_empty() {
+            String::new()
+        } else {
+            format!("[算子准则]\n{}{}\n\n", guidance, persona)
+        };
         let prompt = format!("{}{}[操作员输入]\n{}", soul_block.clone().unwrap_or_default(), persona_block, user_input);
         let request = KernelTurnRequest {
             conversation_id: conversation,

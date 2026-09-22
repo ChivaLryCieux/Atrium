@@ -229,7 +229,16 @@ async function ensureHarness(request) {
   const childEnv = { ...process.env }
   if (request.apiKey) childEnv.DEEPSEEK_API_KEY = request.apiKey
   // Bare base URL (no /chat/completions path); the kernel appends it.
-  if (request.baseUrl) childEnv.DEEPSEEK_BASE_URL = request.baseUrl
+  if (request.baseUrl) {
+    childEnv.DEEPSEEK_BASE_URL = request.baseUrl
+    const isOfficial = !request.baseUrl || request.baseUrl.includes('api.deepseek.com')
+    if (!isOfficial) {
+      // Third-party provider (e.g. StepFun, Moonshot, OpenAI compatible):
+      // Disable DeepSeek native web search endpoint to prevent 401 errors
+      // against api.deepseek.com/anthropic/v1/messages.
+      childEnv.DEEPSEEK_SEARCH_BASE_URL = 'http://127.0.0.1:0'
+    }
+  }
   if (args.dshHome) childEnv.DSH_HOME = args.dshHome
   const sandboxMode = EXECUTION_MODE_SANDBOX[request.executionMode]
   if (sandboxMode) childEnv.DSH_PERMISSION_MODE = sandboxMode
