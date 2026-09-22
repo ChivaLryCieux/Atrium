@@ -14,6 +14,7 @@ import { Markdown } from "./components/Markdown";
 import { TerminalPanel, TerminalSession } from "./components/TerminalPanel";
 import { PanelResizer } from "./components/PanelResizer";
 import Grainient from "./components/Grainient";
+import { StageTelemetryHud } from "./components/StageTelemetryHud";
 import { createUserMessage } from "./constants/defaults";
 import {
   AiProfile,
@@ -765,6 +766,12 @@ export function App() {
                 centerY={0}
                 zoom={0.9}
               />
+              <StageTelemetryHud
+                messages={messages}
+                selectedModel={selectedModel}
+                activeProfile={activeProfile}
+                isStreaming={isSending}
+              />
               {messages.length === 0 ? (
                 /* Home / Greeting Stage */
                 <CenterHome
@@ -811,7 +818,6 @@ export function App() {
                           <div className="bubble-body ai-bubble">
                             <div className="speaker-header">
                               <span className="speaker-name">{msg.speakerName}</span>
-                              {msg.pending && <span className="thinking-hint">{t("app.thinkingOut")}</span>}
                             </div>
                             <div className="bubble-text"><Markdown text={msg.content} /></div>
                           </div>

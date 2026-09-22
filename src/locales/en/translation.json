@@ -42,6 +42,12 @@
     "placeholder": "Ask Atrium, use @ for context and / for commands",
     "followUpPlaceholder": "Ask Atrium to follow up..."
   },
+  "stage": {
+    "tokensUsed": "Token usage:",
+    "contextLength": "Context ratio:",
+    "streaming": "Streaming live",
+    "ratioTooltip": "Context tokens: {{current}} / Ceiling: {{ceiling}} ({{percent}}%)"
+  },
   "prompt": {
     "soul": "Persona",
     "model": "Model",

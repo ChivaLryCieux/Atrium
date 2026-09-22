@@ -606,6 +606,186 @@ body.resizing-row * {
   transform: translateZ(0);
 }
 
+/* ==========================================================================
+   Stage Telemetry HUD (Top-Right Visual Focal Point)
+   ========================================================================== */
+.stage-telemetry-hud {
+  position: absolute;
+  top: 20px;
+  right: 24px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+  min-width: 144px;
+  background: rgba(255, 255, 255, 0.65);
+  backdrop-filter: blur(18px) saturate(180%);
+  -webkit-backdrop-filter: blur(18px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  border-radius: var(--radius-xl, 18px);
+  box-shadow: 0 12px 32px -4px rgba(0, 0, 0, 0.06), 0 4px 12px -2px rgba(0, 0, 0, 0.03);
+  user-select: none;
+  pointer-events: auto;
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+}
+
+[data-resolved-theme="dark"] .stage-telemetry-hud,
+[data-theme="pure-black"] .stage-telemetry-hud {
+  background: rgba(24, 24, 27, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 16px 36px -4px rgba(0, 0, 0, 0.45);
+}
+
+.stage-telemetry-hud:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 16px 36px -4px rgba(0, 0, 0, 0.09), 0 6px 16px -2px rgba(0, 0, 0, 0.04);
+}
+
+[data-resolved-theme="dark"] .stage-telemetry-hud:hover,
+[data-theme="pure-black"] .stage-telemetry-hud:hover {
+  box-shadow: 0 18px 40px -4px rgba(0, 0, 0, 0.55);
+}
+
+/* Individual Telemetry Metric Card */
+.telemetry-chart {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
+.telemetry-tokens-chart {
+  align-items: center;
+  text-align: center;
+}
+
+.telemetry-context-chart {
+  align-items: center;
+  text-align: center;
+}
+
+/* Metric Header Label */
+.telemetry-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+
+.telemetry-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+}
+
+.telemetry-context-chart .telemetry-header {
+  margin-bottom: 6px;
+}
+
+/* Big Number (Linux Biolinum) */
+.telemetry-big-number.biolinum-figure {
+  font-family: "Linux Biolinum", Georgia, serif;
+  font-size: 38px;
+  font-weight: 700;
+  line-height: 1.05;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.5px;
+  white-space: nowrap;
+  text-align: center;
+  transition: color 0.2s ease;
+}
+
+.is-streaming .telemetry-big-number.biolinum-figure {
+  color: var(--accent-black, #18181b);
+}
+
+[data-resolved-theme="dark"] .is-streaming .telemetry-big-number.biolinum-figure,
+[data-theme="pure-black"] .is-streaming .telemetry-big-number.biolinum-figure {
+  color: #ffffff;
+}
+
+/* Subtle Horizontal Divider Between the Two Charts */
+.telemetry-divider {
+  width: 100%;
+  height: 1px;
+  background: var(--border-default);
+  opacity: 0.6;
+}
+
+[data-resolved-theme="dark"] .telemetry-divider,
+[data-theme="pure-black"] .telemetry-divider {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* Circular Gauge */
+.telemetry-gauge-container {
+  position: relative;
+  width: 92px;
+  height: 92px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.telemetry-circular-gauge {
+  width: 92px;
+  height: 92px;
+  transform: rotate(0deg);
+  overflow: visible;
+}
+
+.gauge-bg-circle {
+  fill: none;
+  stroke: rgba(0, 0, 0, 0.08);
+}
+
+[data-resolved-theme="dark"] .gauge-bg-circle,
+[data-theme="pure-black"] .gauge-bg-circle {
+  stroke: rgba(255, 255, 255, 0.12);
+}
+
+.gauge-progress-circle {
+  fill: none;
+  transition: stroke-dashoffset 0.4s cubic-bezier(0.4, 0, 0.2, 1), stroke 0.3s ease;
+}
+
+/* Inside the Circular Gauge */
+.gauge-inner-text {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.gauge-current-val.biolinum-figure {
+  font-family: "Linux Biolinum", Georgia, serif;
+  font-size: 19px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.2px;
+}
+
+.gauge-divider-ceiling {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  line-height: 1;
+  margin-top: 2px;
+  letter-spacing: 0.2px;
+}
+
 /* Home / Empty State View */
 .center-home {
   display: flex;

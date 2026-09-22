@@ -42,6 +42,12 @@
     "placeholder": "向 Atrium 提问，使用 @ 添加上下文，使用 / 呼出指令能力",
     "followUpPlaceholder": "向 Atrium 提问，继续跟进任务..."
   },
+  "stage": {
+    "tokensUsed": "词元用量：",
+    "contextLength": "语境长度占比：",
+    "streaming": "实时更新中",
+    "ratioTooltip": "当前上下文：{{current}} 词元 / 上限：{{ceiling}} ({{percent}}%)"
+  },
   "prompt": {
     "soul": "人格选择",
     "model": "模型选择",
