@@ -805,12 +805,26 @@ body.resizing-row * {
   color: #ffffff;
 }
 
-/* Subtle Horizontal Divider Between the Two Charts */
+/* Subtle Horizontal Divider Between Charts */
 .telemetry-divider {
   width: 100%;
   height: 1px;
   background: var(--border-default);
   opacity: 0.6;
+}
+
+.telemetry-speed-chart {
+  align-items: center;
+  text-align: center;
+}
+
+.telemetry-unit-label {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  margin-top: 2px;
+  text-align: center;
+  letter-spacing: 0.2px;
 }
 
 [data-resolved-theme="dark"] .telemetry-divider,
@@ -1099,7 +1113,8 @@ body.resizing-row * {
 .chat-message-stream {
   flex: 1;
   overflow-y: auto;
-  padding: 24px 32px;
+  /* Reserve 220px on the right so dialogue bubbles never collide or intersect with StageTelemetryHud */
+  padding: 24px 220px 24px 32px;
   display: flex;
   flex-direction: column;
   gap: 20px;
@@ -1208,6 +1223,7 @@ body.resizing-row * {
    react-markdown renders plain elements; these rules keep them inside
    the bubble width and on the theme tokens. */
 .md-body {
+  white-space: normal;
   word-break: break-word;
   overflow-wrap: anywhere;
 }
@@ -1260,16 +1276,29 @@ body.resizing-row * {
 .md-body ul,
 .md-body ol {
   margin: 4px 0 8px;
-  padding-left: 22px;
+  padding-left: 20px;
 }
 
 .md-body li {
   margin: 2px 0;
+  line-height: 1.6;
+}
+
+.md-body li + li {
+  margin-top: 3px;
+}
+
+.md-body li > p {
+  margin: 0;
+}
+
+.md-body li > p + p {
+  margin-top: 4px;
 }
 
 .md-body li > ul,
 .md-body li > ol {
-  margin-bottom: 2px;
+  margin: 2px 0;
 }
 
 .md-body blockquote {
@@ -1304,19 +1333,32 @@ body.resizing-row * {
 .md-body pre {
   margin: 8px 0;
   padding: 10px 12px;
-  background: var(--accent-black);
-  color: var(--accent-on-black);
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
   border-radius: 8px;
   overflow-x: auto;
   max-width: 100%;
 }
 
+.md-body pre::-webkit-scrollbar {
+  height: 5px;
+}
+
+.md-body pre::-webkit-scrollbar-thumb {
+  background: var(--border-subtle);
+  border-radius: 4px;
+}
+
 .md-body pre code {
   background: transparent;
   padding: 0;
-  color: inherit;
+  color: var(--text-primary);
   word-break: normal;
   overflow-wrap: normal;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.55;
 }
 
 .md-body table {
@@ -1372,7 +1414,7 @@ body.resizing-row * {
 .chat-docked-input {
   display: flex;
   justify-content: center;
-  padding: 16px 24px 20px;
+  padding: 16px 220px 20px 32px;
   position: relative;
   z-index: 2;
 }
@@ -4039,8 +4081,8 @@ body.resizing-row * {
 .tool-code-block {
   margin: 0;
   padding: 6px 8px;
-  border-radius: 5px;
-  background: var(--bg-card);
+  border-radius: 6px;
+  background: var(--bg-sidebar);
   border: 1px solid var(--border-subtle);
   font-size: 11px;
   line-height: 1.45;
@@ -4054,21 +4096,31 @@ body.resizing-row * {
 .tool-terminal-window {
   margin: 0;
   padding: 8px 10px;
-  border-radius: 5px;
-  background: #0d1117;
-  color: #c9d1d9;
-  border: 1px solid #30363d;
-  font-size: 11px;
+  border-radius: 6px;
+  background: var(--bg-sidebar);
+  color: var(--text-primary);
+  border: 1px solid var(--border-subtle);
+  font-size: 11.5px;
   line-height: 1.5;
   max-height: 220px;
   overflow-y: auto;
+}
+
+.tool-terminal-window::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.tool-terminal-window::-webkit-scrollbar-thumb {
+  background: var(--border-subtle);
+  border-radius: 4px;
 }
 
 .tool-output-content {
   margin: 0;
   white-space: pre-wrap;
   word-break: break-all;
-  color: #e6edf3;
+  color: var(--text-primary);
   font-family: inherit;
 }
 
@@ -4076,13 +4128,13 @@ body.resizing-row * {
   display: flex;
   align-items: center;
   gap: 6px;
-  color: #8b949e;
+  color: var(--text-tertiary);
   font-size: 11px;
 }
 
 .tool-cursor {
   animation: toolBlink 1s infinite;
-  color: #58a6ff;
+  color: var(--accent-blue, #3b82f6);
 }
 
 @keyframes toolBlink {
@@ -4091,7 +4143,7 @@ body.resizing-row * {
 }
 
 .tool-output-error {
-  color: #f85149;
+  color: var(--accent-danger, #ef4444);
   white-space: pre-wrap;
   word-break: break-all;
 }

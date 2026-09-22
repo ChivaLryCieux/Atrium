@@ -9,15 +9,15 @@ interface ReasoningAccordionProps {
   statusDetail?: string | null;
 }
 
-function formatDuration(ms: number): string {
-  if (ms <= 0) return "1s";
+function formatDurationZh(ms: number): string {
+  if (ms <= 0) return "1 秒";
   const totalSeconds = Math.round(ms / 1000);
   if (totalSeconds < 60) {
-    return `${Math.max(1, totalSeconds)}s`;
+    return `${Math.max(1, totalSeconds)} 秒`;
   }
   const minutes = Math.floor(totalSeconds / 60);
   const remainingSeconds = totalSeconds % 60;
-  return remainingSeconds > 0 ? `${minutes}m ${remainingSeconds}s` : `${minutes}m`;
+  return remainingSeconds > 0 ? `${minutes} 分 ${remainingSeconds} 秒` : `${minutes} 分钟`;
 }
 
 export const ReasoningAccordion: React.FC<ReasoningAccordionProps> = ({
@@ -62,7 +62,7 @@ export const ReasoningAccordion: React.FC<ReasoningAccordionProps> = ({
     return null;
   }
 
-  const durationStr = formatDuration(
+  const durationStr = formatDurationZh(
     reasoningDurationMs || latencyMs || (elapsedMs > 0 ? elapsedMs : 1000)
   );
 
@@ -74,7 +74,7 @@ export const ReasoningAccordion: React.FC<ReasoningAccordionProps> = ({
         <div className="reasoning-streaming-header">
           <span className="reasoning-pulse-dot" />
           <span className="reasoning-streaming-label">
-            {statusDetail || `Thinking... ${durationStr}`}
+            {statusDetail || `深度思考中... ${durationStr}`}
           </span>
         </div>
         {reasoning ? (
@@ -94,7 +94,7 @@ export const ReasoningAccordion: React.FC<ReasoningAccordionProps> = ({
   }
 
   // Once finished:
-  // Render collapsed button "Worked for <time> ›" matching reference design
+  // Render collapsed button "推理用时 <time> ›" matching reference design
   return (
     <div className="reasoning-accordion-container">
       <button
@@ -103,7 +103,7 @@ export const ReasoningAccordion: React.FC<ReasoningAccordionProps> = ({
         onClick={() => setIsExpanded((prev) => !prev)}
         title={isExpanded ? "收起思考过程" : "展开查看完整思考链"}
       >
-        <span className="reasoning-toggle-label">Worked for {durationStr}</span>
+        <span className="reasoning-toggle-label">推理用时 {durationStr}</span>
         <svg
           className={`reasoning-chevron ${isExpanded ? "open" : ""}`}
           width="12"

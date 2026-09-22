@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { AiProfile, ChatMessage } from "../types/chat";
 
@@ -159,6 +159,54 @@ export const StageTelemetryHud: React.FC<StageTelemetryHudProps> = ({
       ? "#f59e0b"
       : "var(--text-primary, #18181b)";
 
+  // Real-time output speed tracking (tokens / second)
+  const [liveSpeed, setLiveSpeed] = useState<number | null>(null);
+  const streamStartRef = useRef<{ time: number } | null>(null);
+
+  useEffect(() => {
+    if (!isStreaming) {
+      streamStartRef.current = null;
+      setLiveSpeed(null);
+      return;
+    }
+
+    if (!streamStartRef.current) {
+      streamStartRef.current = { time: Date.now() };
+    }
+
+    const interval = setInterval(() => {
+      if (!streamStartRef.current) return;
+      const elapsed = (Date.now() - streamStartRef.current.time) / 1000;
+      if (elapsed > 0.4) {
+        const pendingMsg = [...messages].reverse().find((m) => m.role === "assistant" && m.pending);
+        if (pendingMsg) {
+          const comp = pendingMsg.completionTokens ?? estimateTokens(pendingMsg.content || "");
+          if (comp > 0) {
+            setLiveSpeed(Math.round(comp / elapsed));
+          }
+        }
+      }
+    }, 200);
+
+    return () => clearInterval(interval);
+  }, [isStreaming, messages]);
+
+  const outputSpeed = useMemo(() => {
+    if (isStreaming && liveSpeed !== null && liveSpeed > 0) {
+      return liveSpeed;
+    }
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const msg = messages[i];
+      if (msg.role === "assistant" && !msg.pending) {
+        if (msg.completionTokens && msg.latencyMs && msg.latencyMs > 0) {
+          const s = Math.round(msg.completionTokens / (msg.latencyMs / 1000));
+          if (s > 0) return s;
+        }
+      }
+    }
+    return 0;
+  }, [messages, isStreaming, liveSpeed]);
+
   return (
     <div
       className={`stage-telemetry-hud ${isStreaming ? "is-streaming" : ""}`}
@@ -228,6 +276,25 @@ export const StageTelemetryHud: React.FC<StageTelemetryHudProps> = ({
               /{ceiling.label}
             </span>
           </div>
+        </div>
+      </div>
+
+      {/* Subtle Horizontal Divider */}
+      <div className="telemetry-divider" />
+
+      {/* ── Chart 3: 输出速度 (Output Speed) ── */}
+      <div className="telemetry-chart telemetry-speed-chart">
+        <div className="telemetry-header">
+          <span className="telemetry-label">{t("stage.outputSpeed")}</span>
+        </div>
+        <div
+          className="telemetry-big-number biolinum-figure"
+          title={`${outputSpeed > 0 ? outputSpeed : 0} ${t("stage.tokensPerSec")}`}
+        >
+          {outputSpeed > 0 ? outputSpeed.toLocaleString() : (isStreaming ? "..." : "-")}
+        </div>
+        <div className="telemetry-unit-label">
+          {t("stage.tokensPerSec")}
         </div>
       </div>
     </div>

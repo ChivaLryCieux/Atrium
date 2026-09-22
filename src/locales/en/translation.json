@@ -48,6 +48,8 @@
   "stage": {
     "tokensUsed": "Token usage:",
     "contextLength": "Context ratio:",
+    "outputSpeed": "Output speed:",
+    "tokensPerSec": "tokens/s",
     "streaming": "Streaming live",
     "ratioTooltip": "Context tokens: {{current}} / Ceiling: {{ceiling}} ({{percent}}%)"
   },
