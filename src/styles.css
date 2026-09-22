@@ -4184,3 +4184,158 @@ body.resizing-row * {
   animation: fadeIn 0.2s ease;
 }
 
+/* ── Reasoning Chain: Floating Stream Panel & Worked for Accordion ── */
+.reasoning-streaming-container {
+  margin: 6px 0 10px 0;
+  background: var(--bg-hover, rgba(0, 0, 0, 0.02));
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 10px 12px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.03);
+  animation: fadeIn 0.2s ease;
+}
+
+.reasoning-streaming-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 6px;
+}
+
+.reasoning-pulse-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #3b82f6;
+  display: inline-block;
+  box-shadow: 0 0 6px rgba(59, 130, 246, 0.6);
+  animation: pulseDot 1.5s infinite;
+}
+
+@keyframes pulseDot {
+  0% { transform: scale(0.85); opacity: 0.6; }
+  50% { transform: scale(1.15); opacity: 1; }
+  100% { transform: scale(0.85); opacity: 0.6; }
+}
+
+.reasoning-streaming-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  font-family: var(--font-sans);
+}
+
+.reasoning-scroll-panel {
+  max-height: 180px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 4px;
+}
+
+.reasoning-scroll-panel::-webkit-scrollbar {
+  width: 4px;
+}
+
+.reasoning-scroll-panel::-webkit-scrollbar-thumb {
+  background: var(--border-subtle);
+  border-radius: 4px;
+}
+
+.reasoning-text-stream {
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.reasoning-cursor {
+  display: inline-block;
+  width: 5px;
+  height: 13px;
+  background: #3b82f6;
+  vertical-align: middle;
+  margin-left: 2px;
+  animation: blinkCursor 0.9s step-end infinite;
+}
+
+@keyframes blinkCursor {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.reasoning-pre-scroll-hint {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  font-style: italic;
+  padding: 4px 0;
+}
+
+.reasoning-accordion-container {
+  margin: 4px 0 8px 0;
+}
+
+.reasoning-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: transparent;
+  border: none;
+  padding: 2px 0;
+  font-size: 13px;
+  font-family: var(--font-sans);
+  color: var(--text-tertiary, #64748b);
+  cursor: pointer;
+  transition: color 0.15s ease;
+  user-select: none;
+}
+
+.reasoning-toggle-btn:hover {
+  color: var(--text-primary);
+}
+
+.reasoning-toggle-label {
+  font-weight: 500;
+}
+
+.reasoning-chevron {
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  color: inherit;
+}
+
+.reasoning-chevron.open {
+  transform: rotate(90deg);
+}
+
+.reasoning-accordion-content {
+  margin: 4px 0 10px 2px;
+  padding: 8px 12px;
+  border-left: 2px solid var(--border-subtle);
+  max-height: 360px;
+  overflow-y: auto;
+  background: var(--bg-hover, rgba(0, 0, 0, 0.02));
+  border-radius: 0 8px 8px 0;
+  animation: fadeIn 0.18s ease;
+}
+
+.reasoning-accordion-content::-webkit-scrollbar {
+  width: 4px;
+}
+
+.reasoning-accordion-content::-webkit-scrollbar-thumb {
+  background: var(--border-subtle);
+  border-radius: 4px;
+}
+
+.reasoning-markdown-wrapper {
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+.reasoning-markdown-wrapper .md-body {
+  font-size: 12.5px;
+}
+
+

@@ -251,6 +251,8 @@ struct KernelTurnResponse {
     #[serde(default)]
     final_response: String,
     #[serde(default)]
+    reasoning_content: Option<String>,
+    #[serde(default)]
     input_tokens: Option<u64>,
     #[serde(default)]
     output_tokens: Option<u64>,
@@ -496,6 +498,8 @@ async fn execute_dag_kernel(
                     completion_tokens: Some(completion_tokens),
                     latency_ms: Some(latency),
                     tool_calls: turn.tool_calls,
+                    reasoning_content: turn.reasoning_content,
+                    reasoning_duration_ms: None,
                 };
                 let _ = app.emit(
                     "orchestration-progress",
@@ -524,6 +528,8 @@ async fn execute_dag_kernel(
                     completion_tokens: None,
                     latency_ms: Some(start_time.elapsed().as_millis() as u64),
                     tool_calls: None,
+                    reasoning_content: None,
+                    reasoning_duration_ms: None,
                 };
                 let _ = app.emit(
                     "orchestration-progress",
@@ -698,6 +704,8 @@ async fn execute_single_direct(
                 completion_tokens: Some(comp_toks),
                 latency_ms: Some(latency),
                 tool_calls: None,
+                reasoning_content: None,
+                reasoning_duration_ms: None,
             }]
         }
         Err(err) => vec![ChatMessage {
@@ -713,6 +721,8 @@ async fn execute_single_direct(
             completion_tokens: None,
             latency_ms: Some(start_time.elapsed().as_millis() as u64),
             tool_calls: None,
+            reasoning_content: None,
+            reasoning_duration_ms: None,
         }],
     }
 }
@@ -825,6 +835,8 @@ async fn execute_single_kernel(
                 completion_tokens: Some(completion_tokens),
                 latency_ms: Some(latency),
                 tool_calls: turn.tool_calls,
+                reasoning_content: turn.reasoning_content,
+                reasoning_duration_ms: None,
             };
             let _ = app.emit(
                 "orchestration-progress",
@@ -853,6 +865,8 @@ async fn execute_single_kernel(
                 completion_tokens: None,
                 latency_ms: Some(start_time.elapsed().as_millis() as u64),
                 tool_calls: None,
+                reasoning_content: None,
+                reasoning_duration_ms: None,
             };
             let _ = app.emit(
                 "orchestration-progress",
@@ -945,6 +959,8 @@ async fn execute_parallel_kernel(
                         completion_tokens: Some(completion_tokens),
                         latency_ms: Some(latency),
                         tool_calls: turn.tool_calls,
+                        reasoning_content: turn.reasoning_content,
+                        reasoning_duration_ms: None,
                     }
                 }
                 Err(err) => ChatMessage {
@@ -960,6 +976,8 @@ async fn execute_parallel_kernel(
                     completion_tokens: None,
                     latency_ms: Some(latency),
                     tool_calls: None,
+                    reasoning_content: None,
+                    reasoning_duration_ms: None,
                 },
             }
         })
@@ -1048,6 +1066,8 @@ async fn execute_dag(
                     completion_tokens: Some(completion_tokens),
                     latency_ms: Some(latency),
                     tool_calls: None,
+                    reasoning_content: None,
+                    reasoning_duration_ms: None,
                 };
                 completed_replies.push(reply.clone());
 
@@ -1077,6 +1097,8 @@ async fn execute_dag(
                     completion_tokens: None,
                     latency_ms: Some(latency),
                     tool_calls: None,
+                    reasoning_content: None,
+                    reasoning_duration_ms: None,
                 };
                 completed_replies.push(reply.clone());
 
@@ -1154,6 +1176,8 @@ async fn execute_parallel(
                         completion_tokens: Some(completion_tokens),
                         latency_ms: None,
                         tool_calls: None,
+                        reasoning_content: None,
+                        reasoning_duration_ms: None,
                     }
                 }
                 Err(err) => ChatMessage {
@@ -1169,6 +1193,8 @@ async fn execute_parallel(
                     completion_tokens: None,
                     latency_ms: None,
                     tool_calls: None,
+                    reasoning_content: None,
+                    reasoning_duration_ms: None,
                 },
             }
         })

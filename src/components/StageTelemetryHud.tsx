@@ -103,22 +103,36 @@ export const StageTelemetryHud: React.FC<StageTelemetryHudProps> = ({
 }) => {
   const { t } = useTranslation();
 
-  // Calculate tokens used in current conversation in real-time
+  // Calculate total cumulative tokens used across the entire task in real-time.
+  // Prioritize exact tokens returned by the API/kernel (promptTokens + completionTokens),
+  // falling back to text estimation only when API token metrics are not yet recorded.
   const tokensUsed = useMemo(() => {
     let total = 0;
     for (const msg of messages) {
-      if (!msg.content) continue;
-      // Skip purely transient "Thinking..." placeholders
-      if (
-        msg.pending &&
-        (msg.content === t("app.thinking") ||
-          msg.content.includes(t("app.stageAnalyzing")))
-      ) {
-        continue;
+      if (msg.role === "user") {
+        // User messages are part of the prompt context
+        total += msg.promptTokens ?? estimateTokens(msg.content);
+      } else if (msg.role === "assistant") {
+        const hasPrompt = typeof msg.promptTokens === "number" && msg.promptTokens > 0;
+        const hasCompletion = typeof msg.completionTokens === "number" && msg.completionTokens > 0;
+
+        if (hasPrompt || hasCompletion) {
+          // Exact token metric recorded from API turn
+          total += (msg.promptTokens ?? 0) + (msg.completionTokens ?? 0);
+        } else if (msg.content) {
+          // Fallback during streaming or for legacy messages
+          if (
+            msg.pending &&
+            (msg.content === t("app.thinking") ||
+              msg.content.includes(t("app.stageAnalyzing")))
+          ) {
+            continue;
+          }
+          total += estimateTokens(msg.content);
+        }
       }
-      total += estimateTokens(msg.content);
     }
-    return total;
+    return Math.max(total, 1);
   }, [messages, t]);
 
   const ceiling = useMemo(

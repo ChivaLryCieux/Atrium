@@ -346,6 +346,7 @@ function handleNotification(route, notification, state, sseWrite) {
           for (const piece of record.texts) {
             if (piece) {
               _emitStream(conversationId, stageId, piece, { isReasoning: true })
+              state.reasoningText = (state.reasoningText || '') + piece
             }
           }
         } else if (record.type === 'chunk') {
@@ -355,6 +356,7 @@ function handleNotification(route, notification, state, sseWrite) {
             emitted += chunk.text.length
           } else if (chunk?.type === 'reasoning-delta' && typeof chunk.text === 'string' && chunk.text.length > 0) {
             _emitStream(conversationId, stageId, chunk.text, { isReasoning: true })
+            state.reasoningText = (state.reasoningText || '') + chunk.text
           }
         }
       }
@@ -489,7 +491,7 @@ function runTurn(request, sseWrite) {
   const execution = record.chain.then(async () => {
     const entry = await ensureHarness(request)
     const route = { conversationId, stageId }
-    const state = { usage: null, toolCalls: [] }
+    const state = { usage: null, toolCalls: [], reasoningText: '' }
     broadcastTelemetry(conversationId, stageId, { kind: 'turn-start', model: request.model })
 
     const result = await entry.harness.run(prompt, {
@@ -503,6 +505,7 @@ function runTurn(request, sseWrite) {
     return {
       sessionId: result.sessionId,
       finalResponse: result.finalResponse ?? '',
+      reasoningContent: state.reasoningText || undefined,
       ...(state.usage ? { usage: state.usage } : {}),
       toolCalls: state.toolCalls,
       kernelRoute: routeKey(request),

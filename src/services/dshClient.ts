@@ -17,6 +17,7 @@ export interface DshStreamChunk {
   stageId?: string;
   speakerName?: string;
   conversationId?: string;
+  isReasoning?: boolean;
 }
 
 export interface ToolEventMessage {

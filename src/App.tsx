@@ -16,6 +16,7 @@ import { PanelResizer } from "./components/PanelResizer";
 import Grainient from "./components/Grainient";
 import { StageTelemetryHud } from "./components/StageTelemetryHud";
 import { ToolCallTerminal } from "./components/ToolCallTerminal";
+import { ReasoningAccordion } from "./components/ReasoningAccordion";
 import { createUserMessage } from "./constants/defaults";
 import {
   AiProfile,
@@ -226,6 +227,12 @@ export function App() {
       setMessages((prev) =>
         prev.map((msg) => {
           if (msg.id !== chunk.stageId || !msg.pending) return msg;
+          if (chunk.isReasoning) {
+            return {
+              ...msg,
+              reasoningContent: (msg.reasoningContent || "") + chunk.content,
+            };
+          }
           const isPlaceholder =
             msg.content === tRef.current("app.thinking") ||
             msg.content.includes(tRef.current("app.stageAnalyzing")) ||
@@ -655,12 +662,18 @@ export function App() {
         if (payload.conversationId && active && !payload.conversationId.startsWith(active)) return;
 
         if (payload.type === "assistant-stream") {
-          const { stageId, content } = payload;
+          const { stageId, content, isReasoning } = payload;
           if (!content) return;
           setMessages((prev) =>
             prev.map((msg) => {
               const matches = stageId ? msg.id === stageId : msg.pending && msg.role === "assistant";
               if (!matches || !msg.pending) return msg;
+              if (isReasoning) {
+                return {
+                  ...msg,
+                  reasoningContent: (msg.reasoningContent || "") + content,
+                };
+              }
               const isPlaceholder =
                 msg.content === tRef.current("app.thinking") ||
                 msg.content.includes(tRef.current("app.stageAnalyzing")) ||
@@ -761,11 +774,13 @@ export function App() {
               : pending?.toolCalls ?? null;
           const promptTokens = reply.promptTokens ?? pending?.promptTokens ?? null;
           const completionTokens = reply.completionTokens ?? pending?.completionTokens ?? null;
+          const reasoningContent = reply.reasoningContent || pending?.reasoningContent || null;
           return {
             ...reply,
             toolCalls,
             promptTokens,
             completionTokens,
+            reasoningContent,
           };
         });
         const updatedMessages = [...baseMessages, ...mergedReplies];
@@ -1041,13 +1056,24 @@ export function App() {
                             <div className="speaker-header">
                               <span className="speaker-name">{msg.speakerName}</span>
                             </div>
+                            {(msg.reasoningContent || (msg.pending && (msg.content === t("app.thinking") || msg.content.includes(t("app.stageAnalyzing"))))) ? (
+                              <ReasoningAccordion
+                                reasoning={msg.reasoningContent}
+                                isStreaming={Boolean(msg.pending && (msg.content === t("app.thinking") || msg.content.includes(t("app.stageAnalyzing"))))}
+                                latencyMs={msg.latencyMs}
+                                reasoningDurationMs={msg.reasoningDurationMs}
+                                statusDetail={msg.statusDetail}
+                              />
+                            ) : null}
                             {(!msg.pending ||
                               (msg.content !== t("app.thinking") &&
                                 !msg.content.includes(t("app.stageAnalyzing")) &&
                                 !(msg.content.startsWith("[") && msg.content.includes("]")))) ? null : (
-                              <div className="agent-thinking-hint">
-                                {msg.statusDetail || t("app.thinking")}
-                              </div>
+                              !msg.reasoningContent ? (
+                                <div className="agent-thinking-hint">
+                                  {msg.statusDetail || t("app.thinking")}
+                                </div>
+                              ) : null
                             )}
                             {msg.toolCalls && msg.toolCalls.length > 0 && (
                               <ToolCallTerminal toolCalls={msg.toolCalls} />

@@ -79,6 +79,8 @@ export type ChatMessage = {
   latencyMs?: number | null;
   toolCalls?: ToolCallItem[] | null;
   statusDetail?: string | null;
+  reasoningContent?: string | null;
+  reasoningDurationMs?: number | null;
 };
 
 export type PendingMessage = ChatMessage & {

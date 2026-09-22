@@ -128,6 +128,10 @@ pub struct ChatMessage {
     pub latency_ms: Option<u64>,
     #[serde(default)]
     pub tool_calls: Option<Vec<ToolCallRecord>>,
+    #[serde(default)]
+    pub reasoning_content: Option<String>,
+    #[serde(default)]
+    pub reasoning_duration_ms: Option<u64>,
 }
 
 /// Wire format for OpenAI-compatible API (no camelCase needed).
