@@ -418,6 +418,23 @@ export function App() {
     }
   };
 
+  // ── Model selection: (provider, model) pair ────────────────
+  // Switching provider flips the active profile AND persists the picked
+  // model as that provider's default, so a newly added provider/model is
+  // selectable immediately and survives restarts.
+  const handleSelectModel = (profileId: string, modelName: string) => {
+    setActiveProfileId(profileId);
+    setSelectedModel(modelName);
+    if (settings) {
+      void handleSaveSettings({
+        ...settings,
+        aiProfiles: settings.aiProfiles.map((p) =>
+          p.id === profileId ? { ...p, model: modelName } : p
+        ),
+      });
+    }
+  };
+
   // ── Reasoning effort selection (persisted) ───────────────────
   const handleSelectReasoningEffort = (effort: ReasoningEffort) => {
     setReasoningEffort(effort);
@@ -753,9 +770,10 @@ export function App() {
                   souls={souls}
                   activeSoul={activeSoulFolder}
                   onActivateSoul={handleActivateSoul}
-                  models={activeProfile?.models ?? []}
+                  profiles={settings?.aiProfiles ?? []}
+                  activeProfileId={activeProfile?.id ?? null}
                   selectedModel={selectedModel}
-                  onSelectModel={setSelectedModel}
+                  onSelectModel={handleSelectModel}
                   reasoningEffort={reasoningEffort}
                   onSelectReasoningEffort={handleSelectReasoningEffort}
                   executionMode={executionMode}
@@ -794,9 +812,10 @@ export function App() {
                       souls={souls}
                       activeSoul={activeSoulFolder}
                       onActivateSoul={handleActivateSoul}
-                      models={activeProfile?.models ?? []}
+                      profiles={settings?.aiProfiles ?? []}
+                      activeProfileId={activeProfile?.id ?? null}
                       selectedModel={selectedModel}
-                      onSelectModel={setSelectedModel}
+                      onSelectModel={handleSelectModel}
                       reasoningEffort={reasoningEffort}
                       onSelectReasoningEffort={handleSelectReasoningEffort}
                       executionMode={executionMode}

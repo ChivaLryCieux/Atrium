@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ExecutionMode, ProviderModel, ReasoningEffort, Soul } from "../types/chat";
+import { AiProfile, ExecutionMode, ReasoningEffort, Soul } from "../types/chat";
 
 type DropdownItem = { key: string; label: string; description?: string };
 
@@ -66,6 +66,112 @@ function PillDropdown({ header, label, items, selectedKey, onSelect, emptyHint }
   );
 }
 
+type ProviderModelDropdownProps = {
+  profiles: AiProfile[];
+  activeProfileId: string | null;
+  selectedModel: string;
+  onSelect: (profileId: string, modelName: string) => void;
+};
+
+/// Two-level model picker: left column lists providers, hovering a
+/// provider (VS Code style) opens its model list in the right column;
+/// clicking a model selects the (provider, model) pair at once.
+function ProviderModelDropdown({ profiles, activeProfileId, selectedModel, onSelect }: ProviderModelDropdownProps) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const [hoverProfileId, setHoverProfileId] = useState<string | null>(null);
+  const ref = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const keyHandler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("mousedown", handler);
+    window.addEventListener("keydown", keyHandler);
+    return () => {
+      window.removeEventListener("mousedown", handler);
+      window.removeEventListener("keydown", keyHandler);
+    };
+  }, [open]);
+
+  const nonEmpty = profiles.filter((p) => p.models.some((m) => m.name.trim()));
+  const active = profiles.find((p) => p.id === activeProfileId) ?? profiles[0] ?? null;
+  const hovered = profiles.find((p) => p.id === hoverProfileId) ?? active;
+  const label = selectedModel || active?.model || t("prompt.model");
+
+  return (
+    <div className="pill-dropdown" ref={ref}>
+      <button
+        type="button"
+        className="pill-dropdown-btn"
+        title={active ? `${active.name} / ${label}` : label}
+        onClick={() => {
+          setHoverProfileId(active?.id ?? null);
+          setOpen((prev) => !prev);
+        }}
+      >
+        <span>{label}</span>
+        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {open && (
+        <div className="provider-model-menu">
+          <div className="pill-dropdown-header">{t("prompt.model")}</div>
+          {nonEmpty.length === 0 && <div className="pill-dropdown-empty">{t("prompt.noProviders")}</div>}
+          {nonEmpty.length > 0 && (
+            <div className="provider-model-columns">
+              <div className="provider-model-providers">
+                {nonEmpty.map((profile) => (
+                  <button
+                    key={profile.id}
+                    type="button"
+                    onMouseEnter={() => setHoverProfileId(profile.id)}
+                    onFocus={() => setHoverProfileId(profile.id)}
+                    onClick={() => setHoverProfileId(profile.id)}
+                    className={`pill-dropdown-item provider-row ${profile.id === hovered?.id ? "hovered" : ""} ${
+                      profile.id === active?.id ? "active-provider" : ""
+                    }`}
+                    title={profile.description || profile.endpoint}
+                  >
+                    <span className="provider-row-avatar">{profile.avatar}</span>
+                    <span className="provider-row-name">{profile.name}</span>
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 18l6-6-6-6" />
+                    </svg>
+                  </button>
+                ))}
+              </div>
+              <div className="provider-model-models">
+                {(hovered?.models ?? []).filter((m) => m.name.trim()).map((m) => (
+                  <button
+                    key={m.name}
+                    type="button"
+                    onClick={() => {
+                      if (hovered) onSelect(hovered.id, m.name);
+                      setOpen(false);
+                    }}
+                    className={`pill-dropdown-item ${
+                      hovered && active && hovered.id === active.id && m.name === selectedModel ? "active" : ""
+                    }`}
+                  >
+                    <span>{m.name}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 type PromptCardProps = {
   projectName: string;
   projectTooltip?: string;
@@ -77,9 +183,10 @@ type PromptCardProps = {
   souls: Soul[];
   activeSoul: string | null;
   onActivateSoul: (folder: string) => void;
-  models: ProviderModel[];
+  profiles: AiProfile[];
+  activeProfileId: string | null;
   selectedModel: string;
-  onSelectModel: (name: string) => void;
+  onSelectModel: (profileId: string, modelName: string) => void;
   reasoningEffort: ReasoningEffort;
   onSelectReasoningEffort: (effort: ReasoningEffort) => void;
   executionMode: ExecutionMode;
@@ -97,7 +204,8 @@ export function PromptCard({
   souls,
   activeSoul,
   onActivateSoul,
-  models,
+  profiles,
+  activeProfileId,
   selectedModel,
   onSelectModel,
   reasoningEffort,
@@ -126,9 +234,6 @@ export function PromptCard({
   };
 
   const activeSoulName = souls.find((s) => s.folder === activeSoul)?.name ?? t("prompt.defaultSoul");
-  const modelItems: DropdownItem[] = models
-    .filter((m) => m.name.trim())
-    .map((m) => ({ key: m.name, label: m.name }));
   const soulItems: DropdownItem[] = souls.map((s) => ({ key: s.folder, label: s.name }));
 
   return (
@@ -161,13 +266,11 @@ export function PromptCard({
             onSelect={onActivateSoul}
             emptyHint={t("prompt.noSouls")}
           />
-          <PillDropdown
-            header={t("prompt.model")}
-            label={selectedModel || t("prompt.model")}
-            items={modelItems}
-            selectedKey={selectedModel}
+          <ProviderModelDropdown
+            profiles={profiles}
+            activeProfileId={activeProfileId}
+            selectedModel={selectedModel}
             onSelect={onSelectModel}
-            emptyHint={t("prompt.noModels")}
           />
           <PillDropdown
             header={t("prompt.reasoning")}

@@ -6,7 +6,7 @@
 
 ## 核心定位
 
-Atrium 定位于与 **Codex、ZCode、Antigravity** 同类型的 **AI Agent Harness（智能体驾驭）** 应用：
+Atrium： **AI Agent Harness（智能体驾驭）** 应用：
 - **真实内核驱动 (Real Kernel Runtime)**：桌面壳通过官方 `@deepseek-ai/dsh-sdk-client` 以 stdio JSON-RPC 拉起 vendored `deepseek-harness` 的 `dsh --profile sdk` 运行时，会话、工具与模型调度全部由 dsh 内核执行，Atrium 不再绕过内核直连 API。
 - **驾驭化调度 (Harness & Dispatch)**：每个智能体作为一个标准化算子槽位（Slot），支持专属凭据、模型参数与工程约束；多轮上下文由内核会话（Session）持有。
 - **确定性 DAG 流水线 (Deterministic DAG Pipeline)**：多节点协同流水线（探针 Probe -> 拓展 Synthesis -> 审校 Critique）逐节点推进内核会话，节点输出以流式增量实时渲染。
@@ -21,9 +21,13 @@ Atrium 定位于与 **Codex、ZCode、Antigravity** 同类型的 **AI Agent Harn
 
 ## 视觉与工程美学
 
-当前界面为 **极简中性风格（1:1 Replica）**：中性灰阶画布、克制的圆角刻度（4–16px）、细分割线与聚焦态高对比描边；节点徽标与遥测标线使用等宽字体（JetBrains Mono）保留工业仪表质感。主题体系为**纯净白 / 纯净黑 / 中庭彩**三套命名主题外加跟随系统模式（`src/themes/` 注册表驱动，`data-theme` 属性切换 CSS 变量块；中庭彩为纯净白的完整快照副本，与纯净白的后续改动隔离，供手工设计迭代），字号支持 13–15px 三档。
+岛屿式布局、浮动面板、圆角卡片。
 
-项目的设计演进方向为**砼核粗野主义（Concrete Core Brutalism）**——胶片噪点覆层、纯直角结构分割线与更硬朗的装具插槽排版；其中噪点遮层等元素尚未落地，以当前极简实现为准。
+简洁却丰满。神性的。
+
+噪点颗粒。
+
+项目的设计演进方向为**砼核美学（Concrete Core Aesthetics）**——胶片噪点覆层、纯直角结构分割线与更硬朗的装具插槽排版；其中噪点遮层等元素尚未落地，以当前极简实现为准。
 
 排版采用三款 SIL OFL 1.1 字体**本地自托管**（`public/fonts/`，随应用分发、离线可用）：西文与数字用 Linux Biolinum，中文自动回退 Noto Sans SC（思源黑体），代码与等宽遥测用 JetBrains Mono。
 

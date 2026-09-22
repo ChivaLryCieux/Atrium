@@ -1,6 +1,6 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
-import { ExecutionMode, ProviderModel, Project, ReasoningEffort, Soul } from "../types/chat";
+import { AiProfile, ExecutionMode, Project, ReasoningEffort, Soul } from "../types/chat";
 import { PromptCard } from "./PromptCard";
 import TextType from "./TextType";
 
@@ -14,9 +14,10 @@ type CenterHomeProps = {
   souls: Soul[];
   activeSoul: string | null;
   onActivateSoul: (folder: string) => void;
-  models: ProviderModel[];
+  profiles: AiProfile[];
+  activeProfileId: string | null;
   selectedModel: string;
-  onSelectModel: (m: string) => void;
+  onSelectModel: (profileId: string, modelName: string) => void;
   reasoningEffort: ReasoningEffort;
   onSelectReasoningEffort: (effort: ReasoningEffort) => void;
   executionMode: ExecutionMode;
@@ -33,7 +34,8 @@ export function CenterHome({
   souls,
   activeSoul,
   onActivateSoul,
-  models,
+  profiles,
+  activeProfileId,
   selectedModel,
   onSelectModel,
   reasoningEffort,
@@ -75,7 +77,8 @@ export function CenterHome({
         souls={souls}
         activeSoul={activeSoul}
         onActivateSoul={onActivateSoul}
-        models={models}
+        profiles={profiles}
+        activeProfileId={activeProfileId}
         selectedModel={selectedModel}
         onSelectModel={onSelectModel}
         reasoningEffort={reasoningEffort}

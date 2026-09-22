@@ -54,6 +54,7 @@
     "defaultSoul": "Default persona",
     "noSouls": "No personas",
     "noModels": "No models for this provider",
+    "noProviders": "No providers yet, add one in Settings first",
     "noOptions": "No options",
     "send": "Send",
     "planMode": "Plan",
