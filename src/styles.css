@@ -832,45 +832,101 @@ body.resizing-row * {
 
 .message-bubble-row {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   max-width: 860px;
   margin: 0 auto;
   width: 100%;
+  align-items: flex-start;
 }
 
 .message-bubble-row.user {
   justify-content: flex-end;
 }
 
-.message-bubble-row.user .bubble-body {
-  background: var(--bg-pill);
-  color: var(--text-primary);
-  border-radius: var(--radius-lg);
-  padding: 10px 16px;
-  max-width: 80%;
+/* ── WeChat-style avatars ── */
+.chat-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  user-select: none;
+}
+
+.user-avatar {
+  background: var(--accent-black);
+  color: var(--accent-on-black);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.ai-avatar {
+  background: transparent;
+  border: none;
+}
+
+.ai-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+/* ── Chat bubbles: fully rounded, no tails ── */
+.bubble-body {
+  position: relative;
   font-size: 14px;
   line-height: 1.6;
 }
 
-.message-bubble-row.assistant .bubble-body {
+.bubble-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.user-bubble {
+  background: var(--bg-pill);
+  color: var(--text-primary);
+  border-radius: 12px;
+  padding: 10px 14px;
+  max-width: 72%;
+}
+
+.ai-bubble {
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  padding: 16px 20px;
-  width: 100%;
+  border-radius: 12px;
+  padding: 12px 16px;
+  max-width: 78%;
   box-shadow: var(--shadow-sm);
-  font-size: 14px;
   line-height: 1.7;
+}
+
+.message-bubble-row.assistant.error .ai-bubble {
+  border-color: var(--accent-danger);
 }
 
 .speaker-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
   font-size: 12px;
   font-weight: 500;
   color: var(--text-muted);
+}
+
+.speaker-name {
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.thinking-hint {
+  color: var(--text-placeholder);
+  font-weight: 400;
 }
 
 .node-badge {

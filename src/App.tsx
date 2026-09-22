@@ -780,22 +780,37 @@ export function App() {
                   onSelectExecutionMode={handleSelectExecutionMode}
                 />
               ) : (
-                /* Active Conversation View */
+                /* Active Conversation View — WeChat style: avatar + bubble rows */
                 <div className="chat-conversation-view">
                   <div className="chat-message-stream">
-                    {messages.map((msg) => (
-                      <div key={msg.id} className={`message-bubble-row ${msg.role}`}>
-                        <div className="bubble-body">
-                          {msg.role === "assistant" && (
-                            <div className="speaker-header">
-                              <span className="node-badge">ATRIUM // {msg.speakerName}</span>
-                              {msg.pending && <span>{t("app.thinkingOut")}</span>}
-                            </div>
-                          )}
-                          <div style={{ whiteSpace: "pre-wrap" }}>{msg.content}</div>
+                    {messages.map((msg) =>
+                      msg.role === "user" ? (
+                        <div key={msg.id} className="message-bubble-row user">
+                          <div className="bubble-body user-bubble">
+                            <div className="bubble-text">{msg.content}</div>
+                          </div>
+                          <div
+                            className="chat-avatar user-avatar"
+                            title={settings?.userName?.trim() || t("app.me")}
+                          >
+                            {(settings?.userName?.trim() || t("app.me")).charAt(0).toUpperCase()}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      ) : (
+                        <div key={msg.id} className={`message-bubble-row assistant${msg.error ? " error" : ""}`}>
+                          <div className="chat-avatar ai-avatar" title={msg.speakerName}>
+                            <img src="/logo.png" alt={msg.speakerName} />
+                          </div>
+                          <div className="bubble-body ai-bubble">
+                            <div className="speaker-header">
+                              <span className="speaker-name">{msg.speakerName}</span>
+                              {msg.pending && <span className="thinking-hint">{t("app.thinkingOut")}</span>}
+                            </div>
+                            <div className="bubble-text">{msg.content}</div>
+                          </div>
+                        </div>
+                      )
+                    )}
                     <div ref={messageEndRef} />
                   </div>
 
