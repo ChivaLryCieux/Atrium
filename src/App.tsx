@@ -15,6 +15,7 @@ import { TerminalPanel, TerminalSession } from "./components/TerminalPanel";
 import { PanelResizer } from "./components/PanelResizer";
 import Grainient from "./components/Grainient";
 import { StageTelemetryHud } from "./components/StageTelemetryHud";
+import { ToolCallTerminal } from "./components/ToolCallTerminal";
 import { createUserMessage } from "./constants/defaults";
 import {
   AiProfile,
@@ -220,21 +221,105 @@ export function App() {
     // matching keeps their deltas flowing to the same session view.
     const unlistenStream = dshClient.onStream((chunk) => {
       const active = activeSessionIdRef.current;
-      if (chunk.conversationId && (!active || !chunk.conversationId.startsWith(active))) return;
+      if (chunk.conversationId && active && !chunk.conversationId.startsWith(active)) return;
       if (!chunk.stageId || !chunk.content) return;
       setMessages((prev) =>
         prev.map((msg) => {
           if (msg.id !== chunk.stageId || !msg.pending) return msg;
           const isPlaceholder =
             msg.content === tRef.current("app.thinking") ||
-            msg.content.includes(tRef.current("app.stageAnalyzing"));
+            msg.content.includes(tRef.current("app.stageAnalyzing")) ||
+            (msg.content.startsWith("[") && msg.content.includes("]"));
           return { ...msg, content: isPlaceholder ? chunk.content! : msg.content + chunk.content! };
+        })
+      );
+    });
+
+    // Real-time tool call telemetry from kernel
+    const unlistenToolEvent = dshClient.onToolEvent((msg) => {
+      const active = activeSessionIdRef.current;
+      if (msg.conversationId && active && !msg.conversationId.startsWith(active)) return;
+      setMessages((prev) =>
+        prev.map((m) => {
+          const matches = msg.stageId ? m.id === msg.stageId : m.pending && m.role === "assistant";
+          if (!matches) return m;
+
+          const currentTools = Array.isArray(m.toolCalls) ? [...m.toolCalls] : [];
+          if (msg.event.kind === "call") {
+            const item = msg.event.item;
+            const idx = currentTools.findIndex((t) => t.id === item.id);
+            if (idx >= 0) {
+              currentTools[idx] = { ...currentTools[idx], ...item };
+            } else {
+              currentTools.push(item);
+            }
+          } else if (msg.event.kind === "result") {
+            const { callId, result, isError, error, status } = msg.event;
+            const idx = currentTools.findIndex((t) => t.id === callId);
+            if (idx >= 0) {
+              currentTools[idx] = {
+                ...currentTools[idx],
+                result,
+                isError,
+                error,
+                status,
+              };
+            } else {
+              currentTools.push({
+                id: callId,
+                name: "tool",
+                arguments: "",
+                result,
+                isError,
+                error,
+                status,
+                timestamp: Date.now(),
+              });
+            }
+          }
+          return { ...m, toolCalls: currentTools };
+        })
+      );
+    });
+
+    // Real-time token usage telemetry from kernel
+    const unlistenTokenUsage = dshClient.onTokenUsage((msg) => {
+      const active = activeSessionIdRef.current;
+      if (msg.conversationId && active && !msg.conversationId.startsWith(active)) return;
+      setMessages((prev) =>
+        prev.map((m) => {
+          const matches = msg.stageId ? m.id === msg.stageId : m.pending && m.role === "assistant";
+          if (!matches) return m;
+          return {
+            ...m,
+            promptTokens: msg.usage.inputTokens,
+            completionTokens: msg.usage.outputTokens,
+          };
+        })
+      );
+    });
+
+    // Real-time agent status telemetry from kernel
+    const unlistenAgentStatus = dshClient.onAgentStatus((msg) => {
+      const active = activeSessionIdRef.current;
+      if (msg.conversationId && active && !msg.conversationId.startsWith(active)) return;
+      setMessages((prev) =>
+        prev.map((m) => {
+          const matches = msg.stageId ? m.id === msg.stageId : m.pending && m.role === "assistant";
+          if (!matches || !m.pending) return m;
+          return {
+            ...m,
+            statusDetail: msg.detail,
+          };
         })
       );
     });
 
     return () => {
       unlistenStream();
+      unlistenToolEvent();
+      unlistenTokenUsage();
+      unlistenAgentStatus();
     };
   }, []);
 
@@ -503,6 +588,11 @@ export function App() {
       }
     }
 
+    if (curSessionId) {
+      activeSessionIdRef.current = curSessionId;
+    }
+    dshClient.ensureConnected();
+
     const userMessage = createUserMessage(draft.trim(), settings.userName || "Tempsyche");
     const baseMessages = [...messages, userMessage];
 
@@ -540,7 +630,7 @@ export function App() {
     setMessages([...baseMessages, ...pendingMessages]);
 
     try {
-      const unlisten = await listen<OrchestrationProgressEvent>(
+      const unlistenProgress = await listen<OrchestrationProgressEvent>(
         "orchestration-progress",
         (event) => {
           const { stageId, stageTitle, status: eventStatus } = event.payload;
@@ -555,6 +645,93 @@ export function App() {
           }
         }
       );
+
+      // Real-time stream direct from kernel via Rust SSE pipe
+      const unlistenStreamEvent = await listen<any>("kernel-stream-event", (event) => {
+        const payload = event.payload;
+        if (!payload || typeof payload !== "object") return;
+
+        const active = activeSessionIdRef.current;
+        if (payload.conversationId && active && !payload.conversationId.startsWith(active)) return;
+
+        if (payload.type === "assistant-stream") {
+          const { stageId, content } = payload;
+          if (!content) return;
+          setMessages((prev) =>
+            prev.map((msg) => {
+              const matches = stageId ? msg.id === stageId : msg.pending && msg.role === "assistant";
+              if (!matches || !msg.pending) return msg;
+              const isPlaceholder =
+                msg.content === tRef.current("app.thinking") ||
+                msg.content.includes(tRef.current("app.stageAnalyzing")) ||
+                (msg.content.startsWith("[") && msg.content.includes("]"));
+              return { ...msg, content: isPlaceholder ? content : msg.content + content };
+            })
+          );
+        } else if (payload.type === "tool-event") {
+          const { stageId, event: toolEvt } = payload;
+          if (!toolEvt) return;
+          setMessages((prev) =>
+            prev.map((m) => {
+              const matches = stageId ? m.id === stageId : m.pending && m.role === "assistant";
+              if (!matches) return m;
+
+              const currentTools = Array.isArray(m.toolCalls) ? [...m.toolCalls] : [];
+              if (toolEvt.kind === "call") {
+                const item = toolEvt.item;
+                const idx = currentTools.findIndex((t) => t.id === item.id);
+                if (idx >= 0) {
+                  currentTools[idx] = { ...currentTools[idx], ...item };
+                } else {
+                  currentTools.push(item);
+                }
+              } else if (toolEvt.kind === "result") {
+                const { callId, result, isError, error, status } = toolEvt;
+                const idx = currentTools.findIndex((t) => t.id === callId);
+                if (idx >= 0) {
+                  currentTools[idx] = { ...currentTools[idx], result, isError, error, status };
+                } else {
+                  currentTools.push({
+                    id: callId,
+                    name: "tool",
+                    arguments: "",
+                    result,
+                    isError,
+                    error,
+                    status,
+                    timestamp: Date.now(),
+                  });
+                }
+              }
+              return { ...m, toolCalls: currentTools };
+            })
+          );
+        } else if (payload.type === "token-usage") {
+          const { stageId, usage } = payload;
+          if (!usage) return;
+          setMessages((prev) =>
+            prev.map((m) => {
+              const matches = stageId ? m.id === stageId : m.pending && m.role === "assistant";
+              if (!matches) return m;
+              return {
+                ...m,
+                promptTokens: usage.inputTokens,
+                completionTokens: usage.outputTokens,
+              };
+            })
+          );
+        } else if (payload.type === "agent-status") {
+          const { stageId, detail } = payload;
+          if (!detail) return;
+          setMessages((prev) =>
+            prev.map((m) => {
+              const matches = stageId ? m.id === stageId : m.pending && m.role === "assistant";
+              if (!matches || !m.pending) return m;
+              return { ...m, statusDetail: detail };
+            })
+          );
+        }
+      });
 
       // Execute request
       const finalReplies = await invoke<ChatMessage[]>("execute_orchestration", {
@@ -573,20 +750,37 @@ export function App() {
         },
       });
 
-      unlisten();
-      const updatedMessages = [...baseMessages, ...finalReplies];
-      setMessages(updatedMessages);
-
-      if (curSessionId) {
-        invoke("save_session_messages", {
-          sessionId: curSessionId,
-          messages: updatedMessages,
-        })
-          .then(() => {
-            invoke<SessionSummary[]>("list_sessions").then(setSessions).catch(console.error);
+      unlistenProgress();
+      unlistenStreamEvent();
+      setMessages((prev) => {
+        const mergedReplies = finalReplies.map((reply) => {
+          const pending = prev.find((m) => m.id === reply.id);
+          const toolCalls =
+            reply.toolCalls && reply.toolCalls.length > 0
+              ? reply.toolCalls
+              : pending?.toolCalls ?? null;
+          const promptTokens = reply.promptTokens ?? pending?.promptTokens ?? null;
+          const completionTokens = reply.completionTokens ?? pending?.completionTokens ?? null;
+          return {
+            ...reply,
+            toolCalls,
+            promptTokens,
+            completionTokens,
+          };
+        });
+        const updatedMessages = [...baseMessages, ...mergedReplies];
+        if (curSessionId) {
+          invoke("save_session_messages", {
+            sessionId: curSessionId,
+            messages: updatedMessages,
           })
-          .catch(console.error);
-      }
+            .then(() => {
+              invoke<SessionSummary[]>("list_sessions").then(setSessions).catch(console.error);
+            })
+            .catch(console.error);
+        }
+        return updatedMessages;
+      });
     } catch (error) {
       setMessages((prev) =>
         prev.map((msg) =>
@@ -847,7 +1041,23 @@ export function App() {
                             <div className="speaker-header">
                               <span className="speaker-name">{msg.speakerName}</span>
                             </div>
-                            <div className="bubble-text"><Markdown text={msg.content} /></div>
+                            {(!msg.pending ||
+                              (msg.content !== t("app.thinking") &&
+                                !msg.content.includes(t("app.stageAnalyzing")) &&
+                                !(msg.content.startsWith("[") && msg.content.includes("]")))) ? null : (
+                              <div className="agent-thinking-hint">
+                                {msg.statusDetail || t("app.thinking")}
+                              </div>
+                            )}
+                            {msg.toolCalls && msg.toolCalls.length > 0 && (
+                              <ToolCallTerminal toolCalls={msg.toolCalls} />
+                            )}
+                            {(!msg.pending ||
+                              (msg.content !== t("app.thinking") &&
+                                !msg.content.includes(t("app.stageAnalyzing")) &&
+                                !(msg.content.startsWith("[") && msg.content.includes("]")))) && (
+                              <div className="bubble-text"><Markdown text={msg.content} /></div>
+                            )}
                           </div>
                         </div>
                       )

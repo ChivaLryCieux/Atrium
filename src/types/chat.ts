@@ -44,6 +44,25 @@ export type AppSettings = {
   selectedModel?: string | null;
 };
 
+export type ToolCallItem = {
+  id: string;
+  name: string;
+  arguments: string;
+  result?: string;
+  isError?: boolean;
+  error?: string;
+  status: "running" | "completed" | "error";
+  turn?: number;
+  step?: number;
+  timestamp?: number;
+};
+
+export type TokenUsageDetail = {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens?: number;
+};
+
 export type ChatRole = "user" | "assistant" | "system";
 
 export type ChatMessage = {
@@ -55,6 +74,11 @@ export type ChatMessage = {
   avatar: string;
   pending?: boolean;
   error?: boolean;
+  promptTokens?: number | null;
+  completionTokens?: number | null;
+  latencyMs?: number | null;
+  toolCalls?: ToolCallItem[] | null;
+  statusDetail?: string | null;
 };
 
 export type PendingMessage = ChatMessage & {

@@ -303,5 +303,27 @@
     "initDesc": "No source control is initialized for this project yet. Click below to initialize a Git repository.",
     "initializing": "Initializing...",
     "initSuccess": "Git repository initialized successfully"
+  },
+  "tool": {
+    "title": "Terminal Tool Calls",
+    "call": "Tool Execution",
+    "running": "Running...",
+    "completed": "Completed",
+    "error": "Error",
+    "args": "Arguments",
+    "output": "Terminal Output",
+    "collapse": "Collapse",
+    "expand": "Expand",
+    "copy": "Copy",
+    "copied": "Copied"
+  },
+  "token": {
+    "metricTitle": "Token Telemetry",
+    "input": "Prompt",
+    "output": "Completion",
+    "total": "Total",
+    "speed": "Speed",
+    "latency": "Latency",
+    "tokensPerSec": "{{speed}} tok/s"
   }
 }

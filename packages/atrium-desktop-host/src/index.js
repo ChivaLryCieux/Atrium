@@ -261,16 +261,53 @@ function textOfContentBlocks(message) {
     .join('')
 }
 
+function textOfToolResult(message) {
+  if (!message || !Array.isArray(message.content)) return ''
+  const block = message.content[0]
+  if (block?.type === 'tool-result') {
+    if (typeof block.content === 'string') return block.content
+    if (Array.isArray(block.content)) {
+      return block.content
+        .filter((b) => typeof b?.text === 'string')
+        .map((b) => b.text)
+        .join('\n')
+    }
+  }
+  return textOfContentBlocks(message)
+}
+
 // A run's notification subscription is already scoped to its session tree,
 // so every notification here belongs to (conversationId, stageId). The last
 // assistant usage seen during the run is collected into `state.usage`.
-function handleNotification(route, notification, state) {
+// `sseWrite` (optional) writes each event as an SSE line to the HTTP response
+// stream so the Rust backend can read events incrementally.
+function handleNotification(route, notification, state, sseWrite) {
   const { conversationId, stageId } = route
+
+  // Helpers that emit both to WS clients AND the SSE response stream
+  const _emit = (payload) => {
+    broadcast(payload)
+    if (sseWrite) sseWrite(payload)
+  }
+  const _emitStream = (cid, sid, content, extra = {}) => {
+    if (content === undefined || content === null) return
+    _emit({ type: 'assistant-stream', conversationId: cid, stageId: sid, content, ...extra })
+  }
 
   if (notification.method === 'session.event') {
     const event = notification.params?.event
 
-    if (event?.type === 'assistant/message') {
+    if (event?.type === 'turn/start') {
+      _emit({
+        type: 'agent-status',
+        conversationId,
+        stageId,
+        status: 'thinking',
+        detail: '正在进行深度推理与任务规划...',
+        turn: event.data?.turn,
+      })
+      broadcastTelemetry(conversationId, stageId, { kind: 'turn-start', turn: event.data?.turn })
+    } else if (event?.type === 'assistant/message' || event?.type === 'assistant/attempt') {
       const usage = event.data?.usage
       if (usage && typeof usage === 'object') {
         state.usage = {
@@ -278,27 +315,142 @@ function handleNotification(route, notification, state) {
           outputTokens: Number(usage.outputTokens ?? 0),
           ...(usage.totalTokens === undefined ? {} : { totalTokens: Number(usage.totalTokens) }),
         }
+        _emit({
+          type: 'token-usage',
+          conversationId,
+          stageId,
+          usage: state.usage,
+        })
       }
       const stream = Array.isArray(event.data?.stream) ? event.data.stream : []
       let emitted = 0
       for (const record of stream) {
-        const chunk = record?.chunk
-        if (chunk?.type === 'text-delta' && typeof chunk.text === 'string' && chunk.text.length > 0) {
-          broadcastStream(conversationId, stageId, chunk.text)
-          emitted += chunk.text.length
+        if (!record) continue
+        if (record.type === 'text-chunks' && Array.isArray(record.texts)) {
+          for (const piece of record.texts) {
+            if (piece) {
+              _emitStream(conversationId, stageId, piece)
+              emitted += piece.length
+            }
+          }
+        } else if (record.type === 'reasoning-chunks' && Array.isArray(record.texts)) {
+          for (const piece of record.texts) {
+            if (piece) {
+              _emitStream(conversationId, stageId, piece, { isReasoning: true })
+            }
+          }
+        } else if (record.type === 'chunk') {
+          const chunk = record.chunk
+          if (chunk?.type === 'text-delta' && typeof chunk.text === 'string' && chunk.text.length > 0) {
+            _emitStream(conversationId, stageId, chunk.text)
+            emitted += chunk.text.length
+          } else if (chunk?.type === 'reasoning-delta' && typeof chunk.text === 'string' && chunk.text.length > 0) {
+            _emitStream(conversationId, stageId, chunk.text, { isReasoning: true })
+          }
         }
       }
       // Settlement safety net: if the compacted stream carried no text deltas,
       // push the assembled message so the UI never shows an empty node.
       if (emitted === 0) {
         const text = textOfContentBlocks(event.data?.message)
-        if (text) broadcastStream(conversationId, stageId, text)
+        if (text) _emitStream(conversationId, stageId, text)
       }
+      _emit({
+        type: 'agent-status',
+        conversationId,
+        stageId,
+        status: 'generating',
+        detail: '正在整合生成最终回复...',
+      })
       broadcastTelemetry(conversationId, stageId, { kind: 'assistant-message', turn: event.data?.turn, step: event.data?.step })
     } else if (event?.type === 'tool/call') {
-      broadcastTelemetry(conversationId, stageId, { kind: 'tool-call', tool: event.data?.name })
+      const callId = String(event.data?.callId ?? `call-${Date.now()}`)
+      const name = String(event.data?.name ?? 'unknown')
+      const args = typeof event.data?.arguments === 'string'
+        ? event.data.arguments
+        : JSON.stringify(event.data?.arguments ?? {})
+      const item = {
+        id: callId,
+        name,
+        arguments: args,
+        turn: event.data?.turn,
+        step: event.data?.step,
+        status: 'running',
+        timestamp: Date.now(),
+      }
+      if (Array.isArray(state.toolCalls)) {
+        state.toolCalls.push(item)
+      }
+      _emit({
+        type: 'tool-event',
+        conversationId,
+        stageId,
+        event: { kind: 'call', item },
+      })
+      _emit({
+        type: 'agent-status',
+        conversationId,
+        stageId,
+        status: 'calling_tool',
+        tool: name,
+        detail: `正在执行工具: ${name}...`,
+        callId,
+      })
+      broadcastTelemetry(conversationId, stageId, { kind: 'tool-call', tool: name, callId })
     } else if (event?.type === 'tool/result') {
-      broadcastTelemetry(conversationId, stageId, { kind: 'tool-result', turn: event.data?.turn })
+      const callId = String(
+        event.data?.message?.source?.callId ||
+        event.data?.message?.content?.[0]?.toolCallId ||
+        ''
+      )
+      const output = textOfToolResult(event.data?.message)
+      const isError = Boolean(event.data?.message?.content?.[0]?.isError || event.data?.error)
+      const errorDetail = event.data?.error ? `${event.data.error.name}: ${event.data.error.reason || event.data.error.code}` : undefined
+      const status = isError ? 'error' : 'completed'
+
+      if (Array.isArray(state.toolCalls)) {
+        const existing = state.toolCalls.find((c) => c.id === callId)
+        if (existing) {
+          existing.result = output
+          existing.isError = isError
+          existing.error = errorDetail
+          existing.status = status
+        }
+      }
+      _emit({
+        type: 'tool-event',
+        conversationId,
+        stageId,
+        event: {
+          kind: 'result',
+          callId,
+          turn: event.data?.turn,
+          step: event.data?.step,
+          result: output,
+          isError,
+          error: errorDetail,
+          status,
+        },
+      })
+      _emit({
+        type: 'agent-status',
+        conversationId,
+        stageId,
+        status: 'tool_finished',
+        tool: callId,
+        detail: '工具执行完成，正在分析并继续推进...',
+        callId,
+        isError,
+      })
+      broadcastTelemetry(conversationId, stageId, { kind: 'tool-result', turn: event.data?.turn, callId, isError })
+    } else if (event?.type === 'turn/end') {
+      _emit({
+        type: 'agent-status',
+        conversationId,
+        stageId,
+        status: 'turn_ended',
+        detail: '轮次执行完毕',
+      })
     } else if (event?.type === 'user/message') {
       broadcastTelemetry(conversationId, stageId, { kind: 'user-message' })
     }
@@ -309,7 +461,7 @@ function handleNotification(route, notification, state) {
 
 // ── Turn execution ─────────────────────────────────────────────
 
-function runTurn(request) {
+function runTurn(request, sseWrite) {
   const conversationId = String(request.conversationId ?? 'default')
   const stageId = request.stageId ?? null
   const prompt = String(request.prompt ?? '').trim()
@@ -328,12 +480,12 @@ function runTurn(request) {
   const execution = record.chain.then(async () => {
     const entry = await ensureHarness(request)
     const route = { conversationId, stageId }
-    const state = { usage: null }
+    const state = { usage: null, toolCalls: [] }
     broadcastTelemetry(conversationId, stageId, { kind: 'turn-start', model: request.model })
 
     const result = await entry.harness.run(prompt, {
       ...(record.dshSessionId ? { sessionId: record.dshSessionId } : {}),
-      onNotification: (notification) => handleNotification(route, notification, state),
+      onNotification: (notification) => handleNotification(route, notification, state, sseWrite),
     })
 
     bindConversation(conversationId, result.sessionId)
@@ -343,6 +495,7 @@ function runTurn(request) {
       sessionId: result.sessionId,
       finalResponse: result.finalResponse ?? '',
       ...(state.usage ? { usage: state.usage } : {}),
+      toolCalls: state.toolCalls,
       kernelRoute: routeKey(request),
     }
   })
@@ -433,8 +586,31 @@ const httpServer = createServer(async (req, res) => {
         return
       }
       const request = await readBody(req)
-      const result = await runTurn(request)
-      sendJson(res, 200, result)
+
+      // Stream SSE events so the Rust backend can emit Tauri events
+      // incrementally instead of waiting for the full turn to complete.
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      })
+
+      const sseWrite = (payload) => {
+        try {
+          res.write(`event: stream\ndata: ${JSON.stringify(payload)}\n\n`)
+        } catch { /* client may have disconnected */ }
+      }
+
+      try {
+        const result = await runTurn(request, sseWrite)
+        res.write(`event: done\ndata: ${JSON.stringify(result)}\n\n`)
+      } catch (error) {
+        res.write(`event: error\ndata: ${JSON.stringify({ error: error?.message ?? String(error) })}\n\n`)
+      }
+      res.end()
       return
     }
 

@@ -303,5 +303,27 @@
     "initDesc": "当前项目尚未初始化版本控制，点击下方按钮在此目录下建立 Git 仓库。",
     "initializing": "正在初始化...",
     "initSuccess": "Git 仓库建立成功"
+  },
+  "tool": {
+    "title": "终端工具调用",
+    "call": "工具执行",
+    "running": "执行中...",
+    "completed": "执行成功",
+    "error": "执行异常",
+    "args": "输入参数",
+    "output": "终端输出",
+    "collapse": "收起详情",
+    "expand": "展开详情",
+    "copy": "复制",
+    "copied": "已复制"
+  },
+  "token": {
+    "metricTitle": "词元用量遥测",
+    "input": "提示词",
+    "output": "生成",
+    "total": "总计",
+    "speed": "生成速率",
+    "latency": "耗时",
+    "tokensPerSec": "{{speed}} tok/s"
   }
 }

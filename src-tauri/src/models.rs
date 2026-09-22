@@ -90,7 +90,22 @@ fn default_api_protocol() -> String {
     "openai-chat".to_string()
 }
 
-// ─── Chat Messages ─────────────────────────────────────────────
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolCallRecord {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub arguments: String,
+    #[serde(default)]
+    pub result: Option<String>,
+    #[serde(default)]
+    pub is_error: bool,
+    #[serde(default)]
+    pub error: Option<String>,
+    #[serde(default)]
+    pub status: String,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -105,6 +120,14 @@ pub struct ChatMessage {
     pub pending: bool,
     #[serde(default)]
     pub error: bool,
+    #[serde(default)]
+    pub prompt_tokens: Option<usize>,
+    #[serde(default)]
+    pub completion_tokens: Option<usize>,
+    #[serde(default)]
+    pub latency_ms: Option<u64>,
+    #[serde(default)]
+    pub tool_calls: Option<Vec<ToolCallRecord>>,
 }
 
 /// Wire format for OpenAI-compatible API (no camelCase needed).

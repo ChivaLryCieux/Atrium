@@ -3855,3 +3855,332 @@ body.resizing-row * {
   color: #2563eb;
   font-weight: 600;
 }
+
+/* ==========================================================================
+   Tool Call Terminal & Real-Time Output Inspection
+   ========================================================================== */
+
+.tool-call-terminal-container {
+  margin: 10px 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--bg-app);
+  overflow: hidden;
+  font-size: 12px;
+}
+
+.tool-call-terminal-banner {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: var(--bg-pill);
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.tool-call-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--border-subtle);
+}
+
+.tool-call-card {
+  background: var(--bg-card);
+  transition: background 0.15s ease;
+}
+
+.tool-call-card.running {
+  border-left: 3px solid #3b82f6;
+}
+
+.tool-call-card.completed {
+  border-left: 3px solid #10b981;
+}
+
+.tool-call-card.error {
+  border-left: 3px solid #ef4444;
+}
+
+.tool-call-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 10px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.tool-call-header:hover {
+  background: var(--bg-surface-alt);
+}
+
+.tool-call-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.tool-prompt-sym {
+  color: var(--text-muted);
+  font-weight: bold;
+}
+
+.tool-name {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.tool-step-tag {
+  font-size: 10px;
+  color: var(--text-muted);
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--bg-pill);
+}
+
+.tool-call-status-zone {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tool-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px;
+  padding: 2px 7px;
+  border-radius: 10px;
+  font-weight: 500;
+}
+
+.tool-status-pill.running {
+  background: rgba(59, 130, 246, 0.12);
+  color: #2563eb;
+}
+
+.tool-status-pill.completed {
+  background: rgba(16, 185, 129, 0.12);
+  color: #059669;
+}
+
+.tool-status-pill.error {
+  background: rgba(239, 68, 68, 0.12);
+  color: #dc2626;
+}
+
+.tool-spinner-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #3b82f6;
+  animation: toolPulse 1.2s infinite ease-in-out;
+}
+
+@keyframes toolPulse {
+  0%, 100% { opacity: 0.3; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1.2); }
+}
+
+.tool-chevron-icon {
+  display: flex;
+  align-items: center;
+  color: var(--text-muted);
+}
+
+.tool-call-body {
+  padding: 8px 10px 10px;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-app);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tool-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tool-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 10.5px;
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.tool-copy-btn {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--bg-pill);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tool-copy-btn:hover {
+  background: var(--bg-surface-alt);
+  color: var(--text-primary);
+}
+
+.tool-code-block {
+  margin: 0;
+  padding: 6px 8px;
+  border-radius: 5px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-primary);
+  max-height: 140px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.tool-terminal-window {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 5px;
+  background: #0d1117;
+  color: #c9d1d9;
+  border: 1px solid #30363d;
+  font-size: 11px;
+  line-height: 1.5;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.tool-output-content {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: #e6edf3;
+  font-family: inherit;
+}
+
+.tool-output-running {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #8b949e;
+  font-size: 11px;
+}
+
+.tool-cursor {
+  animation: toolBlink 1s infinite;
+  color: #58a6ff;
+}
+
+@keyframes toolBlink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.tool-output-error {
+  color: #f85149;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* ==========================================================================
+   Real-Time Token Telemetry & Speed/Latency Metrics
+   ========================================================================== */
+
+.token-metric-badge {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.token-metric-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.token-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--bg-pill);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+}
+
+.token-chip-sym {
+  opacity: 0.7;
+  font-weight: 600;
+}
+
+.token-chip-label {
+  color: var(--text-muted);
+}
+
+.token-chip-val {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.token-chip.speed-chip {
+  background: rgba(245, 158, 11, 0.1);
+  border-color: rgba(245, 158, 11, 0.25);
+  color: #d97706;
+}
+
+.token-chip.speed-chip .token-chip-val {
+  color: #b45309;
+}
+
+.token-chip.latency-chip {
+  background: rgba(107, 114, 128, 0.1);
+}
+
+.token-ratio-bar {
+  display: flex;
+  height: 3px;
+  width: 100%;
+  border-radius: 2px;
+  overflow: hidden;
+  background: var(--bg-pill);
+}
+
+.token-ratio-prompt {
+  background: #3b82f6;
+  transition: width 0.3s ease;
+}
+
+.token-ratio-completion {
+  background: #10b981;
+  transition: width 0.3s ease;
+}
+
+.agent-thinking-hint {
+  font-size: 12.5px;
+  font-family: var(--font-sans);
+  color: var(--text-tertiary);
+  font-style: italic;
+  padding: 2px 0;
+  animation: fadeIn 0.2s ease;
+}
+

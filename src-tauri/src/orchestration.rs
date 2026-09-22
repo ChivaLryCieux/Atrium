@@ -1,3 +1,4 @@
+use futures::StreamExt;
 use reqwest::Client;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -253,9 +254,12 @@ struct KernelTurnResponse {
     input_tokens: Option<u64>,
     #[serde(default)]
     output_tokens: Option<u64>,
+    #[serde(default)]
+    tool_calls: Option<Vec<crate::models::ToolCallRecord>>,
 }
 
 async fn post_turn(
+    app: &AppHandle,
     http: &Client,
     daemon_url: &str,
     request: &KernelTurnRequest,
@@ -269,8 +273,8 @@ async fn post_turn(
         .map_err(|e| format!("内核桥接请求失败: {e}"))?;
 
     let status = response.status();
-    let body = response.text().await.unwrap_or_default();
     if !status.is_success() {
+        let body = response.text().await.unwrap_or_default();
         let detail = serde_json::from_str::<serde_json::Value>(&body)
             .ok()
             .and_then(|v| v.get("error").and_then(|e| e.as_str()).map(str::to_string))
@@ -284,7 +288,85 @@ async fn post_turn(
         return Err(format!("内核返回 {status}: {detail}"));
     }
 
-    serde_json::from_str(&body).map_err(|e| format!("内核响应解析失败: {e}"))
+    // Check if response is SSE stream (Content-Type: text/event-stream)
+    let is_sse = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .map(|ct| ct.contains("text/event-stream"))
+        .unwrap_or(false);
+
+    if !is_sse {
+        let body = response.text().await.unwrap_or_default();
+        return serde_json::from_str(&body).map_err(|e| format!("内核响应解析失败: {e}"));
+    }
+
+    // Read SSE byte stream incrementally
+    let mut stream = response.bytes_stream();
+    let mut buffer = String::new();
+    let mut final_turn: Option<KernelTurnResponse> = None;
+    let mut current_event_type = String::new();
+
+    while let Some(chunk_result) = stream.next().await {
+        let chunk = match chunk_result {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("[ATRIUM_SSE] Error reading chunk: {e}");
+                break;
+            }
+        };
+
+        let chunk_str = match std::str::from_utf8(&chunk) {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+        buffer.push_str(chunk_str);
+
+        // Process complete SSE messages (delimited by \n\n)
+        while let Some(pos) = buffer.find("\n\n") {
+            let message = buffer[..pos].to_string();
+            buffer = buffer[pos + 2..].to_string();
+
+            let mut data_str = String::new();
+            for line in message.lines() {
+                if let Some(event_val) = line.strip_prefix("event: ") {
+                    current_event_type = event_val.trim().to_string();
+                } else if let Some(data_val) = line.strip_prefix("data: ") {
+                    data_str = data_val.trim().to_string();
+                }
+            }
+
+            if data_str.is_empty() {
+                continue;
+            }
+
+            match current_event_type.as_str() {
+                "stream" => {
+                    // Forward raw dsh JSON payload directly to the frontend via Tauri IPC
+                    if let Ok(json_val) = serde_json::from_str::<serde_json::Value>(&data_str) {
+                        let _ = app.emit("kernel-stream-event", json_val);
+                    }
+                }
+                "done" => {
+                    if let Ok(resp) = serde_json::from_str::<KernelTurnResponse>(&data_str) {
+                        final_turn = Some(resp);
+                    }
+                }
+                "error" => {
+                    if let Ok(err_val) = serde_json::from_str::<serde_json::Value>(&data_str) {
+                        let msg = err_val
+                            .get("error")
+                            .and_then(|e| e.as_str())
+                            .unwrap_or("内核内部执行错误");
+                        return Err(msg.to_string());
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    final_turn.ok_or_else(|| "内核流式响应提前终止，未返回结算结果".to_string())
 }
 
 fn latest_user_input(messages: &[ChatMessage]) -> String {
@@ -387,11 +469,19 @@ async fn execute_dag_kernel(
         };
 
         let start_time = std::time::Instant::now();
-        match post_turn(http, daemon_url, &request, std::time::Duration::from_secs(600)).await {
+        match post_turn(app, http, daemon_url, &request, std::time::Duration::from_secs(600)).await {
             Ok(turn) => {
                 let latency = start_time.elapsed().as_millis() as u64;
                 record_turn_usage(app, stage.profile.model.trim(), &request.prompt, &turn, latency, project);
 
+                let prompt_tokens = turn
+                    .input_tokens
+                    .map(|n| n as usize)
+                    .unwrap_or_else(|| crate::tokens::estimate_tokens(&request.prompt));
+                let completion_tokens = turn
+                    .output_tokens
+                    .map(|n| n as usize)
+                    .unwrap_or_else(|| crate::tokens::estimate_tokens(&turn.final_response));
                 let reply = ChatMessage {
                     id: stage_message_id(stage),
                     role: "assistant".to_string(),
@@ -401,6 +491,10 @@ async fn execute_dag_kernel(
                     avatar: stage.profile.avatar.clone(),
                     pending: false,
                     error: false,
+                    prompt_tokens: Some(prompt_tokens),
+                    completion_tokens: Some(completion_tokens),
+                    latency_ms: Some(latency),
+                    tool_calls: turn.tool_calls,
                 };
                 let _ = app.emit(
                     "orchestration-progress",
@@ -425,6 +519,10 @@ async fn execute_dag_kernel(
                     avatar: stage.profile.avatar.clone(),
                     pending: false,
                     error: true,
+                    prompt_tokens: None,
+                    completion_tokens: None,
+                    latency_ms: Some(start_time.elapsed().as_millis() as u64),
+                    tool_calls: None,
                 };
                 let _ = app.emit(
                     "orchestration-progress",
@@ -551,15 +649,17 @@ async fn execute_single_direct(
     match send_chat(http, &seeded, &api_messages).await {
         Ok(response) => {
             let latency = start_time.elapsed().as_millis() as u64;
+            let prompt_toks = crate::tokens::estimate_tokens(&seeded.system_prompt)
+                + api_messages
+                    .iter()
+                    .map(|m| crate::tokens::estimate_tokens(&m.content))
+                    .sum::<usize>();
+            let comp_toks = crate::tokens::estimate_tokens(&response.content);
             crate::tokens::record_usage(
                 app,
                 &profile.model,
-                crate::tokens::estimate_tokens(&seeded.system_prompt)
-                    + api_messages
-                        .iter()
-                        .map(|m| crate::tokens::estimate_tokens(&m.content))
-                        .sum::<usize>(),
-                crate::tokens::estimate_tokens(&response.content),
+                prompt_toks,
+                comp_toks,
                 latency,
                 project.map(|(id, name, _)| (id, name)),
             );
@@ -572,6 +672,10 @@ async fn execute_single_direct(
                 avatar: profile.avatar.clone(),
                 pending: false,
                 error: false,
+                prompt_tokens: Some(prompt_toks),
+                completion_tokens: Some(comp_toks),
+                latency_ms: Some(latency),
+                tool_calls: None,
             }]
         }
         Err(err) => vec![ChatMessage {
@@ -583,6 +687,10 @@ async fn execute_single_direct(
             avatar: profile.avatar.clone(),
             pending: false,
             error: true,
+            prompt_tokens: None,
+            completion_tokens: None,
+            latency_ms: Some(start_time.elapsed().as_millis() as u64),
+            tool_calls: None,
         }],
     }
 }
@@ -653,7 +761,7 @@ async fn execute_single_kernel(
     };
 
     let start_time = std::time::Instant::now();
-    match post_turn(http, daemon_url, &request, std::time::Duration::from_secs(600)).await {
+    match post_turn(app, http, daemon_url, &request, std::time::Duration::from_secs(600)).await {
         Ok(turn) => {
             let latency = start_time.elapsed().as_millis() as u64;
             record_turn_usage(
@@ -674,6 +782,14 @@ async fn execute_single_kernel(
                 }
                 cache.insert(conversation.to_string(), fingerprint);
             }
+            let prompt_tokens = turn
+                .input_tokens
+                .map(|n| n as usize)
+                .unwrap_or_else(|| crate::tokens::estimate_tokens(&prompt));
+            let completion_tokens = turn
+                .output_tokens
+                .map(|n| n as usize)
+                .unwrap_or_else(|| crate::tokens::estimate_tokens(&turn.final_response));
             let reply = ChatMessage {
                 id: stage_id.clone(),
                 role: "assistant".to_string(),
@@ -683,6 +799,10 @@ async fn execute_single_kernel(
                 avatar: profile.avatar.clone(),
                 pending: false,
                 error: false,
+                prompt_tokens: Some(prompt_tokens),
+                completion_tokens: Some(completion_tokens),
+                latency_ms: Some(latency),
+                tool_calls: turn.tool_calls,
             };
             let _ = app.emit(
                 "orchestration-progress",
@@ -707,6 +827,10 @@ async fn execute_single_kernel(
                 avatar: profile.avatar.clone(),
                 pending: false,
                 error: true,
+                prompt_tokens: None,
+                completion_tokens: None,
+                latency_ms: Some(start_time.elapsed().as_millis() as u64),
+                tool_calls: None,
             };
             let _ = app.emit(
                 "orchestration-progress",
@@ -759,7 +883,7 @@ async fn execute_parallel_kernel(
         };
         async move {
             let start_time = std::time::Instant::now();
-            let result = post_turn(http, daemon_url, &request, std::time::Duration::from_secs(600)).await;
+            let result = post_turn(app, http, daemon_url, &request, std::time::Duration::from_secs(600)).await;
             (profile, prompt, start_time, result)
         }
     });
@@ -769,23 +893,47 @@ async fn execute_parallel_kernel(
     results
         .into_iter()
         .map(|(profile, prompt, start_time, result)| {
-            let (content, error) = match result {
+            let latency = start_time.elapsed().as_millis() as u64;
+            match result {
                 Ok(turn) => {
-                    let latency = start_time.elapsed().as_millis() as u64;
                     record_turn_usage(app, profile.model.trim(), &prompt, &turn, latency, project);
-                    (turn.final_response, false)
+                    let prompt_tokens = turn
+                        .input_tokens
+                        .map(|n| n as usize)
+                        .unwrap_or_else(|| crate::tokens::estimate_tokens(&prompt));
+                    let completion_tokens = turn
+                        .output_tokens
+                        .map(|n| n as usize)
+                        .unwrap_or_else(|| crate::tokens::estimate_tokens(&turn.final_response));
+                    ChatMessage {
+                        id: Uuid::new_v4().to_string(),
+                        role: "assistant".to_string(),
+                        content: turn.final_response,
+                        speaker_id: Some(profile.id.clone()),
+                        speaker_name: profile.name.clone(),
+                        avatar: profile.avatar.clone(),
+                        pending: false,
+                        error: false,
+                        prompt_tokens: Some(prompt_tokens),
+                        completion_tokens: Some(completion_tokens),
+                        latency_ms: Some(latency),
+                        tool_calls: turn.tool_calls,
+                    }
                 }
-                Err(err) => (err, true),
-            };
-            ChatMessage {
-                id: Uuid::new_v4().to_string(),
-                role: "assistant".to_string(),
-                content,
-                speaker_id: Some(profile.id.clone()),
-                speaker_name: profile.name.clone(),
-                avatar: profile.avatar.clone(),
-                pending: false,
-                error,
+                Err(err) => ChatMessage {
+                    id: Uuid::new_v4().to_string(),
+                    role: "assistant".to_string(),
+                    content: err,
+                    speaker_id: Some(profile.id.clone()),
+                    speaker_name: profile.name.clone(),
+                    avatar: profile.avatar.clone(),
+                    pending: false,
+                    error: true,
+                    prompt_tokens: None,
+                    completion_tokens: None,
+                    latency_ms: Some(latency),
+                    tool_calls: None,
+                },
             }
         })
         .collect()
@@ -869,6 +1017,10 @@ async fn execute_dag(
                     avatar: stage.profile.avatar.clone(),
                     pending: false,
                     error: false,
+                    prompt_tokens: Some(prompt_tokens),
+                    completion_tokens: Some(completion_tokens),
+                    latency_ms: Some(latency),
+                    tool_calls: None,
                 };
                 completed_replies.push(reply.clone());
 
@@ -894,6 +1046,10 @@ async fn execute_dag(
                     avatar: stage.profile.avatar.clone(),
                     pending: false,
                     error: true,
+                    prompt_tokens: None,
+                    completion_tokens: None,
+                    latency_ms: Some(latency),
+                    tool_calls: None,
                 };
                 completed_replies.push(reply.clone());
 
@@ -954,16 +1110,25 @@ async fn execute_parallel(
         .map(|(profile, result)| {
             let message_id = Uuid::new_v4().to_string();
             match result {
-                Ok(response) => ChatMessage {
-                    id: message_id,
-                    role: "assistant".to_string(),
-                    content: response.content,
-                    speaker_id: Some(profile.id.clone()),
-                    speaker_name: profile.name.clone(),
-                    avatar: profile.avatar.clone(),
-                    pending: false,
-                    error: false,
-                },
+                Ok(response) => {
+                    let prompt_tokens = crate::tokens::estimate_tokens(&profile.system_prompt)
+                        + base_messages.iter().map(|m| crate::tokens::estimate_tokens(&m.content)).sum::<usize>();
+                    let completion_tokens = crate::tokens::estimate_tokens(&response.content);
+                    ChatMessage {
+                        id: message_id,
+                        role: "assistant".to_string(),
+                        content: response.content,
+                        speaker_id: Some(profile.id.clone()),
+                        speaker_name: profile.name.clone(),
+                        avatar: profile.avatar.clone(),
+                        pending: false,
+                        error: false,
+                        prompt_tokens: Some(prompt_tokens),
+                        completion_tokens: Some(completion_tokens),
+                        latency_ms: None,
+                        tool_calls: None,
+                    }
+                }
                 Err(err) => ChatMessage {
                     id: message_id,
                     role: "assistant".to_string(),
@@ -973,6 +1138,10 @@ async fn execute_parallel(
                     avatar: profile.avatar.clone(),
                     pending: false,
                     error: true,
+                    prompt_tokens: None,
+                    completion_tokens: None,
+                    latency_ms: None,
+                    tool_calls: None,
                 },
             }
         })
