@@ -38,6 +38,10 @@ export type AppSettings = {
   themeMode?: ThemeMode | null;
   fontSize?: "13px" | "14px" | "15px" | null;
   activeSoul?: string | null;
+  /// Provider (AiProfile id) picked in the model selector; persisted.
+  activeProfileId?: string | null;
+  /// Model name picked in the model selector (within activeProfileId).
+  selectedModel?: string | null;
 };
 
 export type ChatRole = "user" | "assistant" | "system";

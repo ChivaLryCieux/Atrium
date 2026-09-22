@@ -929,6 +929,162 @@ body.resizing-row * {
   font-weight: 400;
 }
 
+/* ── Markdown body inside AI bubbles ──
+   react-markdown renders plain elements; these rules keep them inside
+   the bubble width and on the theme tokens. */
+.md-body {
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.md-body > *:first-child {
+  margin-top: 0;
+}
+
+.md-body > *:last-child {
+  margin-bottom: 0;
+}
+
+.md-body p {
+  margin: 0 0 8px;
+}
+
+.md-body p:last-child {
+  margin-bottom: 0;
+}
+
+.md-body h1,
+.md-body h2,
+.md-body h3,
+.md-body h4 {
+  margin: 12px 0 6px;
+  line-height: 1.4;
+  color: var(--text-primary);
+}
+
+.md-body h1:first-child,
+.md-body h2:first-child,
+.md-body h3:first-child {
+  margin-top: 0;
+}
+
+.md-body h1 { font-size: 17px; }
+.md-body h2 { font-size: 16px; }
+.md-body h3 { font-size: 15px; }
+.md-body h4 { font-size: 14px; }
+
+.md-body strong {
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.md-body em {
+  font-style: italic;
+}
+
+.md-body ul,
+.md-body ol {
+  margin: 4px 0 8px;
+  padding-left: 22px;
+}
+
+.md-body li {
+  margin: 2px 0;
+}
+
+.md-body li > ul,
+.md-body li > ol {
+  margin-bottom: 2px;
+}
+
+.md-body blockquote {
+  margin: 8px 0;
+  padding: 6px 12px;
+  border-left: 3px solid var(--border-strong);
+  background: var(--bg-pill);
+  border-radius: 0 8px 8px 0;
+  color: var(--text-secondary);
+}
+
+.md-body blockquote p {
+  margin-bottom: 4px;
+}
+
+.md-body a {
+  color: var(--accent-blue);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  word-break: break-all;
+}
+
+.md-body code {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  background: var(--bg-pill);
+  border-radius: 4px;
+  padding: 1px 5px;
+  word-break: break-word;
+}
+
+.md-body pre {
+  margin: 8px 0;
+  padding: 10px 12px;
+  background: var(--accent-black);
+  color: var(--accent-on-black);
+  border-radius: 8px;
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.md-body pre code {
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  word-break: normal;
+  overflow-wrap: normal;
+}
+
+.md-body table {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  margin: 8px 0;
+  font-size: 13px;
+}
+
+.md-body th,
+.md-body td {
+  border: 1px solid var(--border-default);
+  padding: 6px 10px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.md-body thead th {
+  background: var(--bg-pill);
+  font-weight: 600;
+}
+
+.md-body hr {
+  border: none;
+  border-top: 1px solid var(--border-default);
+  margin: 12px 0;
+}
+
+.md-body img {
+  max-width: 100%;
+  border-radius: 8px;
+  display: block;
+  margin: 8px 0;
+}
+
+.md-body input[type="checkbox"] {
+  margin-right: 6px;
+  accent-color: var(--accent-blue);
+}
+
 .node-badge {
   padding: 2px 6px;
   background: var(--bg-pill);
@@ -942,9 +1098,18 @@ body.resizing-row * {
   display: flex;
   justify-content: center;
   padding: 16px 24px 20px;
-  background: linear-gradient(180deg, transparent 0%, var(--bg-stage-fade) 50%);
   position: relative;
   z-index: 2;
+}
+
+/* Align the docked prompt card with the message stream: its left edge
+   matches the AI bubble column (avatar + bubble) and its right edge
+   matches the user bubble column — both live on the same 860px grid,
+   so the card just adopts the same max-width wrapper with its own
+   padding subtracted (24px side padding on the stream). */
+.chat-docked-input > .prompt-card {
+  max-width: min(860px, 92%);
+  width: 860px;
 }
 
 /* Modal Overlay for Settings / Help */

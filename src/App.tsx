@@ -10,6 +10,7 @@ import { SoulManagerDialog } from "./components/SoulManagerDialog";
 import { AboutDialog } from "./components/AboutDialog";
 import { GitSourceControlPanel } from "./components/GitSourceControlPanel";
 import { PromptCard } from "./components/PromptCard";
+import { Markdown } from "./components/Markdown";
 import { TerminalPanel, TerminalSession } from "./components/TerminalPanel";
 import { PanelResizer } from "./components/PanelResizer";
 import Grainient from "./components/Grainient";
@@ -138,11 +139,14 @@ export function App() {
           loaded.userName = "Tempsyche";
         }
         setSettings(loaded);
-        if (loaded.aiProfiles.length > 0) {
-          setActiveProfileId(loaded.aiProfiles[0].id);
-          if (loaded.aiProfiles[0].model) {
-            setSelectedModel(loaded.aiProfiles[0].model);
-          }
+        // Restore the persisted (provider, model) choice; fall back to the
+        // first profile only when nothing was saved (or it was deleted).
+        const savedProfile =
+          loaded.aiProfiles.find((p) => p.id === loaded.activeProfileId) ??
+          loaded.aiProfiles[0];
+        if (savedProfile) {
+          setActiveProfileId(savedProfile.id);
+          setSelectedModel(loaded.selectedModel || savedProfile.model || "");
         }
         if (loaded.reasoningEffort) {
           // The UI offers three tiers; legacy "off" normalizes to 低耗推理.
@@ -419,15 +423,18 @@ export function App() {
   };
 
   // ── Model selection: (provider, model) pair ────────────────
-  // Switching provider flips the active profile AND persists the picked
-  // model as that provider's default, so a newly added provider/model is
-  // selectable immediately and survives restarts.
+  // The picked pair is persisted as the app default: switching provider
+  // flips the active profile, stores the model as that provider's
+  // default, and records activeProfileId/selectedModel on settings so
+  // the choice is restored verbatim on the next launch.
   const handleSelectModel = (profileId: string, modelName: string) => {
     setActiveProfileId(profileId);
     setSelectedModel(modelName);
     if (settings) {
       void handleSaveSettings({
         ...settings,
+        activeProfileId: profileId,
+        selectedModel: modelName,
         aiProfiles: settings.aiProfiles.map((p) =>
           p.id === profileId ? { ...p, model: modelName } : p
         ),
@@ -806,7 +813,7 @@ export function App() {
                               <span className="speaker-name">{msg.speakerName}</span>
                               {msg.pending && <span className="thinking-hint">{t("app.thinkingOut")}</span>}
                             </div>
-                            <div className="bubble-text">{msg.content}</div>
+                            <div className="bubble-text"><Markdown text={msg.content} /></div>
                           </div>
                         </div>
                       )
