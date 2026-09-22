@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { AiProfile, ChatMessage } from "../types/chat";
+import { StarModelViewer } from "./StarModelViewer";
 
 /**
  * Fast, accurate BPE & CJK token estimator mirroring the backend tokens.rs.
@@ -159,14 +160,14 @@ export const StageTelemetryHud: React.FC<StageTelemetryHudProps> = ({
       ? "#f59e0b"
       : "var(--text-primary, #18181b)";
 
-  // Real-time output speed tracking (tokens / second)
-  const [liveSpeed, setLiveSpeed] = useState<number | null>(null);
+  // Cumulative average output speed tracking: Total completion tokens / Total inference time (seconds)
+  const [streamElapsedSec, setStreamElapsedSec] = useState<number>(0);
   const streamStartRef = useRef<{ time: number } | null>(null);
 
   useEffect(() => {
     if (!isStreaming) {
       streamStartRef.current = null;
-      setLiveSpeed(null);
+      setStreamElapsedSec(0);
       return;
     }
 
@@ -177,24 +178,52 @@ export const StageTelemetryHud: React.FC<StageTelemetryHudProps> = ({
     const interval = setInterval(() => {
       if (!streamStartRef.current) return;
       const elapsed = (Date.now() - streamStartRef.current.time) / 1000;
-      if (elapsed > 0.4) {
-        const pendingMsg = [...messages].reverse().find((m) => m.role === "assistant" && m.pending);
-        if (pendingMsg) {
-          const comp = pendingMsg.completionTokens ?? estimateTokens(pendingMsg.content || "");
-          if (comp > 0) {
-            setLiveSpeed(Math.round(comp / elapsed));
-          }
-        }
-      }
+      setStreamElapsedSec(elapsed);
     }, 200);
 
     return () => clearInterval(interval);
-  }, [isStreaming, messages]);
+  }, [isStreaming]);
 
   const outputSpeed = useMemo(() => {
-    if (isStreaming && liveSpeed !== null && liveSpeed > 0) {
-      return liveSpeed;
+    let totalCompletionTokens = 0;
+    let totalDurationSec = 0;
+
+    for (const msg of messages) {
+      if (msg.role !== "assistant") continue;
+
+      if (msg.pending) {
+        const comp = msg.completionTokens ?? (msg.content ? estimateTokens(msg.content) : 0);
+        if (comp > 0) {
+          totalCompletionTokens += comp;
+        }
+      } else {
+        const comp = msg.completionTokens ?? (msg.content ? estimateTokens(msg.content) : 0);
+        const lat =
+          msg.latencyMs && msg.latencyMs > 0
+            ? msg.latencyMs / 1000
+            : msg.reasoningDurationMs && msg.reasoningDurationMs > 0
+            ? msg.reasoningDurationMs / 1000
+            : 0;
+
+        if (comp > 0) {
+          totalCompletionTokens += comp;
+          if (lat > 0) {
+            totalDurationSec += lat;
+          }
+        }
+      }
     }
+
+    // Include ongoing streaming turn elapsed time
+    if (isStreaming && streamElapsedSec > 0.4) {
+      totalDurationSec += streamElapsedSec;
+    }
+
+    if (totalDurationSec > 0 && totalCompletionTokens > 0) {
+      return Math.round(totalCompletionTokens / totalDurationSec);
+    }
+
+    // Fallback: check the latest assistant turn with recorded latency
     for (let i = messages.length - 1; i >= 0; i--) {
       const msg = messages[i];
       if (msg.role === "assistant" && !msg.pending) {
@@ -204,12 +233,15 @@ export const StageTelemetryHud: React.FC<StageTelemetryHudProps> = ({
         }
       }
     }
+
     return 0;
-  }, [messages, isStreaming, liveSpeed]);
+  }, [messages, isStreaming, streamElapsedSec]);
+
+  const [isExpanded, setIsExpanded] = useState<boolean>(false);
 
   return (
     <div
-      className={`stage-telemetry-hud ${isStreaming ? "is-streaming" : ""}`}
+      className={`stage-telemetry-hud ${isStreaming ? "is-streaming" : ""} ${isExpanded ? "is-expanded" : ""}`}
       title={t("stage.ratioTooltip", {
         current: tokensUsed.toLocaleString(),
         ceiling: ceiling.label,
@@ -282,20 +314,63 @@ export const StageTelemetryHud: React.FC<StageTelemetryHudProps> = ({
       {/* Subtle Horizontal Divider */}
       <div className="telemetry-divider" />
 
-      {/* ── Chart 3: 输出速度 (Output Speed) ── */}
-      <div className="telemetry-chart telemetry-speed-chart">
-        <div className="telemetry-header">
-          <span className="telemetry-label">{t("stage.outputSpeed")}</span>
+      {/* ── Chart 3: 更多统计数据 (More stats / Interactive Star 3D Model) ── */}
+      <div
+        className={`telemetry-chart telemetry-star-chart ${isExpanded ? "is-expanded" : ""}`}
+        onClick={() => setIsExpanded((prev) => !prev)}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setIsExpanded((prev) => !prev);
+          }
+        }}
+        title={t("stage.moreStatsTooltip")}
+      >
+        <div className="telemetry-header telemetry-interactive-header">
+          <span className="telemetry-label">{t("stage.moreStats")}</span>
+          <svg
+            className={`telemetry-expand-chevron ${isExpanded ? "is-expanded" : ""}`}
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
         </div>
-        <div
-          className="telemetry-big-number biolinum-figure"
-          title={`${outputSpeed > 0 ? outputSpeed : 0} ${t("stage.tokensPerSec")}`}
-        >
-          {outputSpeed > 0 ? outputSpeed.toLocaleString() : (isStreaming ? "..." : "-")}
+        <div className="telemetry-star-wrapper">
+          <StarModelViewer isRotating={isStreaming || messages.some((m) => m.pending)} />
         </div>
-        <div className="telemetry-unit-label">
-          {t("stage.tokensPerSec")}
+      </div>
+
+      {/* ── Extended Metrics Section (revealed when Star is clicked) ── */}
+      <div className={`telemetry-extended-container ${isExpanded ? "is-open" : ""}`}>
+        {/* Subtle Horizontal Divider */}
+        <div className="telemetry-divider" />
+
+        {/* ── Metric: 平均输出速度 (Average Output Speed) ── */}
+        <div className="telemetry-chart telemetry-speed-chart">
+          <div className="telemetry-header">
+            <span className="telemetry-label">{t("stage.outputSpeed")}</span>
+          </div>
+          <div
+            className="telemetry-big-number biolinum-figure"
+            title={`${outputSpeed > 0 ? outputSpeed : 0} ${t("stage.tokensPerSec")}`}
+          >
+            {outputSpeed > 0 ? outputSpeed.toLocaleString() : (isStreaming ? "..." : "-")}
+          </div>
+          <div className="telemetry-unit-label">
+            {t("stage.tokensPerSec")}
+          </div>
         </div>
+
+        {/* Subsequent additional metrics can be placed here seamlessly */}
       </div>
     </div>
   );

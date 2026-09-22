@@ -48,8 +48,11 @@
   "stage": {
     "tokensUsed": "Token usage:",
     "contextLength": "Context ratio:",
-    "outputSpeed": "Output speed:",
+    "outputSpeed": "Avg output speed:",
     "tokensPerSec": "tokens/s",
+    "moreStats": "More statistics:",
+    "moreStatsTooltip": "Click to toggle more statistics",
+    "reasoningStar": "Agent Orbit:",
     "streaming": "Streaming live",
     "ratioTooltip": "Context tokens: {{current}} / Ceiling: {{ceiling}} ({{percent}}%)"
   },

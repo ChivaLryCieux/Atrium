@@ -48,8 +48,11 @@
   "stage": {
     "tokensUsed": "词元用量：",
     "contextLength": "语境长度占比：",
-    "outputSpeed": "输出速度：",
+    "outputSpeed": "平均输出速度：",
     "tokensPerSec": "词元/秒",
+    "moreStats": "更多统计数据：",
+    "moreStatsTooltip": "点击展开/收起更多统计数据",
+    "reasoningStar": "推理姿态：",
     "streaming": "实时更新中",
     "ratioTooltip": "当前上下文：{{current}} 词元 / 上限：{{ceiling}} ({{percent}}%)"
   },

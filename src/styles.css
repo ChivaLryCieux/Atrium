@@ -827,6 +827,81 @@ body.resizing-row * {
   letter-spacing: 0.2px;
 }
 
+.telemetry-star-chart {
+  align-items: center;
+  text-align: center;
+  cursor: pointer;
+  border-radius: 12px;
+  padding: 4px 6px;
+  transition: background 0.18s ease, transform 0.15s ease;
+  user-select: none;
+}
+
+.telemetry-star-chart:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+[data-resolved-theme="dark"] .telemetry-star-chart:hover,
+[data-theme="pure-black"] .telemetry-star-chart:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.telemetry-star-chart:active {
+  transform: scale(0.98);
+}
+
+.telemetry-interactive-header {
+  cursor: pointer;
+  gap: 4px;
+}
+
+.telemetry-expand-chevron {
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), color 0.18s ease;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+.telemetry-expand-chevron.is-expanded {
+  transform: rotate(180deg);
+  color: var(--text-primary);
+}
+
+.telemetry-star-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.telemetry-star-canvas-wrapper {
+  width: 92px;
+  height: 92px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: visible;
+}
+
+/* Extended Container for more stats (revealed when Star is clicked) */
+.telemetry-extended-container {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+  transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s ease;
+}
+
+.telemetry-extended-container.is-open {
+  max-height: 320px;
+  opacity: 1;
+  pointer-events: auto;
+}
+
 [data-resolved-theme="dark"] .telemetry-divider,
 [data-theme="pure-black"] .telemetry-divider {
   background: rgba(255, 255, 255, 0.15);
