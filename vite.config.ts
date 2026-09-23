@@ -11,4 +11,16 @@ export default defineConfig({
       ignored: ["**/src-tauri/**"],
     },
   },
+  build: {
+    chunkSizeWarningLimit: 900,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          "vendor-3d": ["three", "@react-three/fiber", "ogl"],
+          "vendor-term": ["@xterm/xterm", "@xterm/addon-fit", "@xterm/addon-web-links"],
+          "vendor-md": ["react-markdown", "remark-gfm"],
+        },
+      },
+    },
+  },
 });
