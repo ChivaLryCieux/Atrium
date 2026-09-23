@@ -27,6 +27,7 @@ import {
 import { createPendingMessages } from "./utils/messages";
 import { generateDefaultTaskTitle } from "./utils/tasks";
 import { loadDraft, saveDraft } from "./utils/drafts";
+import { usePanelLayout } from "./hooks/usePanelLayout";
 import { dshClient } from "./services/dshClient";
 import { applyTheme, normalizeThemeMode } from "./themes";
 import type { ThemeMode } from "./themes";
@@ -79,64 +80,18 @@ export function App() {
   const [activeGitProjectId, setActiveGitProjectId] = useState<string | null>(null);
   const [isPaletteOpen, setIsPaletteOpen] = useState<boolean>(false);
 
-  // ── Panel Resizing States (with localStorage persistence) ──
-  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
-    const saved = localStorage.getItem("atrium_sidebar_width");
-    const parsed = saved ? parseInt(saved, 10) : 250;
-    return Number.isFinite(parsed) && parsed >= 180 && parsed <= 550 ? parsed : 250;
-  });
-  const [gitPanelWidth, setGitPanelWidth] = useState<number>(() => {
-    const saved = localStorage.getItem("atrium_git_panel_width");
-    const parsed = saved ? parseInt(saved, 10) : 280;
-    return Number.isFinite(parsed) && parsed >= 200 && parsed <= 550 ? parsed : 280;
-  });
-  const [terminalHeight, setTerminalHeight] = useState<number>(() => {
-    const saved = localStorage.getItem("atrium_terminal_height");
-    const parsed = saved ? parseInt(saved, 10) : 260;
-    return Number.isFinite(parsed) && parsed >= 140 && parsed <= 600 ? parsed : 260;
-  });
-
-  const handleResizeSidebar = useCallback((delta: number) => {
-    setSidebarWidth((prev) => {
-      const maxW = Math.max(320, Math.round(window.innerWidth * 0.45));
-      const next = Math.max(180, Math.min(maxW, prev + delta));
-      localStorage.setItem("atrium_sidebar_width", next.toString());
-      return next;
-    });
-  }, []);
-
-  const handleResetSidebar = useCallback(() => {
-    setSidebarWidth(250);
-    localStorage.setItem("atrium_sidebar_width", "250");
-  }, []);
-
-  const handleResizeGitPanel = useCallback((delta: number) => {
-    setGitPanelWidth((prev) => {
-      const maxW = Math.max(320, Math.round(window.innerWidth * 0.45));
-      const next = Math.max(200, Math.min(maxW, prev + delta));
-      localStorage.setItem("atrium_git_panel_width", next.toString());
-      return next;
-    });
-  }, []);
-
-  const handleResetGitPanel = useCallback(() => {
-    setGitPanelWidth(280);
-    localStorage.setItem("atrium_git_panel_width", "280");
-  }, []);
-
-  const handleResizeTerminal = useCallback((delta: number) => {
-    setTerminalHeight((prev) => {
-      const maxH = Math.max(200, Math.round(window.innerHeight * 0.7));
-      const next = Math.max(140, Math.min(maxH, prev + delta));
-      localStorage.setItem("atrium_terminal_height", next.toString());
-      return next;
-    });
-  }, []);
-
-  const handleResetTerminal = useCallback(() => {
-    setTerminalHeight(260);
-    localStorage.setItem("atrium_terminal_height", "260");
-  }, []);
+  // ── Panel sizing (localStorage-persisted view state) ──
+  const {
+    sidebarWidth,
+    handleResizeSidebar,
+    handleResetSidebar,
+    gitPanelWidth,
+    handleResizeGitPanel,
+    handleResetGitPanel,
+    terminalHeight,
+    handleResizeTerminal,
+    handleResetTerminal,
+  } = usePanelLayout();
 
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const activeSessionIdRef = useRef<string | null>(null);
