@@ -36,6 +36,7 @@ import { useChatPersistence } from "./hooks/useChatPersistence";
 import { useComposerDrafts } from "./hooks/useComposerDrafts";
 import { useActiveProfile } from "./hooks/useActiveProfile";
 import { useSendMessage } from "./hooks/useSendMessage";
+import { useProjectSoulState } from "./hooks/useProjectSoulState";
 import { dshClient } from "./services/dshClient";
 import { applyTheme, normalizeThemeMode } from "./themes";
 import { useTranslation } from "react-i18next";
@@ -215,57 +216,28 @@ export function App() {
     }
   };
 
-  // ── Project dialog save ──────────────────────────────────────
-  const handleProjectSaved = (saved: Project) => {
-    invoke<Project[]>("list_projects")
-      .then((list) => {
-        setProjects(list);
-        setActiveProjectId(saved.id);
-      })
-      .catch(console.error);
-  };
-
-  // ── Project dialog delete ────────────────────────────────────
-  // The backend re-homed the deleted project's sessions into the first
-  // remaining project, so the local session list (project ownership) and
-  // the active project both need refreshing; the git panel closes when its
-  // project disappears.
-  const handleProjectDeleted = (deletedId: string) => {
-    invoke<Project[]>("list_projects")
-      .then((list) => {
-        setProjects(list);
-        if (activeProjectId === deletedId) {
-          setActiveProjectId(list[0]?.id ?? null);
-        }
-        if (activeGitProjectId === deletedId) {
-          setActiveGitProjectId(null);
-        }
-        invoke<SessionSummary[]>("list_sessions")
-          .then(setSessions)
-          .catch(console.error);
-      })
-      .catch(console.error);
-  };
-
   // ── Souls (personas) ─────────────────────────────────────────
   const activeSoulFolder = settings?.activeSoul ?? "Default";
 
-  const handleActivateSoul = (folder: string) => {
-    if (settings) {
-      handleSaveSettings({ ...settings, activeSoul: folder });
-    }
-  };
-
-  const handleSoulsChanged = () => {
-    invoke<Soul[]>("list_souls").then(setSouls).catch(console.error);
-  };
-
-  const handleSoulDeleted = (folder: string) => {
-    handleSoulsChanged();
-    if (folder === activeSoulFolder) {
-      handleActivateSoul("Default");
-    }
-  };
+  // ── Projects & Souls: CRUD handlers (hook-extracted) ─────────
+  const {
+    handleProjectSaved,
+    handleProjectDeleted,
+    handleActivateSoul,
+    handleSoulsChanged,
+    handleSoulDeleted,
+  } = useProjectSoulState(
+    settings,
+    activeProjectId,
+    activeGitProjectId,
+    activeSoulFolder,
+    setProjects,
+    setActiveProjectId,
+    setActiveGitProjectId,
+    setSessions,
+    setSouls,
+    handleSaveSettings,
+  );
 
   // ── Select Existing Session ──────────────────────────────────
   const handleSelectSession = async (sessionId: string) => {
