@@ -3,11 +3,11 @@ import type { Dispatch, SetStateAction } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { AppSettings, Project, SessionSummary, Soul } from "../types/chat";
 import { dshClient } from "../services/dshClient";
-import { deleteProjectAggregated } from "../services/projectApi";
+import type { ProjectDeletionResult } from "../services/projectApi";
 
 export type ProjectSoulHandlers = {
   handleProjectSaved: (saved: Project) => void;
-  handleProjectDeleted: (deletedId: string) => void;
+  handleProjectDeleted: (deletedId: string, result: ProjectDeletionResult) => void;
   handleActivateSoul: (folder: string) => void;
   handleSoulsChanged: () => void;
   handleSoulDeleted: (folder: string) => void;
@@ -45,24 +45,21 @@ export function useProjectSoulState(
     [setProjects, setActiveProjectId],
   );
 
-  // Project dialog delete: one aggregated invoke returns the refreshed
-  // projects + sessions (backend re-homed the deleted project's sessions
-  // into the first remaining project) plus that fallback id. The git panel
-  // closes when its project disappears.
+  // Project dialog delete: the dialog already performed the aggregated
+  // delete (one invoke) and hands back the refreshed projects + sessions
+  // (backend re-homed the deleted project's sessions into the first
+  // remaining project) plus that fallback id. The git panel closes when its
+  // project disappears.
   const handleProjectDeleted = useCallback(
-    (deletedId: string) => {
-      deleteProjectAggregated(deletedId)
-        .then((result) => {
-          setProjects(result.projects);
-          setSessions(result.sessions);
-          if (activeProjectId === deletedId) {
-            setActiveProjectId(result.fallbackProjectId);
-          }
-          if (activeGitProjectId === deletedId) {
-            setActiveGitProjectId(null);
-          }
-        })
-        .catch(console.error);
+    (deletedId: string, result: ProjectDeletionResult) => {
+      setProjects(result.projects);
+      setSessions(result.sessions);
+      if (activeProjectId === deletedId) {
+        setActiveProjectId(result.fallbackProjectId);
+      }
+      if (activeGitProjectId === deletedId) {
+        setActiveGitProjectId(null);
+      }
     },
     [activeProjectId, activeGitProjectId, setProjects, setActiveProjectId, setActiveGitProjectId, setSessions],
   );

@@ -325,7 +325,6 @@ export function App() {
     draft,
     isSending,
     messages,
-    sessions,
     activeSessionId,
     activeProjectId,
     activeSessionIdRef,

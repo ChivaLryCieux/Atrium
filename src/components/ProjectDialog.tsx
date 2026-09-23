@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { Project, ProjectUsageStats } from "../types/chat";
 import { AppDialog } from "./AppDialog";
+import { deleteProjectAggregated, type ProjectDeletionResult } from "../services/projectApi";
 
 type ProjectDialogProps = {
   mode: "create" | "edit";
@@ -17,7 +18,9 @@ type ProjectDialogProps = {
   fallbackProjectName?: string;
   onClose: () => void;
   onSaved: (project: Project) => void;
-  onDeleted?: (projectId: string) => void;
+  /// Carries the refreshed project/session lists from the aggregated delete
+  /// so the caller needs no follow-up invoke.
+  onDeleted?: (projectId: string, result: ProjectDeletionResult) => void;
 };
 
 export function ProjectDialog({
@@ -78,8 +81,10 @@ export function ProjectDialog({
   const handleDelete = async () => {
     if (!project) return;
     try {
-      await invoke("delete_project", { projectId: project.id });
-      onDeleted?.(project.id);
+      // Aggregated delete: the backend re-homes this project's sessions into
+      // the first remaining project and hands back the refreshed lists.
+      const result = await deleteProjectAggregated(project.id);
+      onDeleted?.(project.id, result);
       onClose();
     } catch (err) {
       console.error(t("project.deleteFailed"), err);

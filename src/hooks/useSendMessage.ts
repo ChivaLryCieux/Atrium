@@ -27,7 +27,6 @@ export type SendPipelineDeps = {
   draft: string;
   isSending: boolean;
   messages: ChatMessage[];
-  sessions: SessionSummary[];
   activeSessionId: string | null;
   activeProjectId: string | null;
   activeSessionIdRef: MutableRefObject<string | null>;
