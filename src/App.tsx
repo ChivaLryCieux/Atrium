@@ -127,6 +127,7 @@ export function App() {
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const messageEndRef = useRef<HTMLDivElement | null>(null);
   const activeSessionIdRef = useRef<string | null>(null);
+  const isSendingRef = useRef<boolean>(false);
   const tRef = useRef(t);
   tRef.current = t;
 
@@ -221,6 +222,7 @@ export function App() {
     // Parallel-mode sub-conversations are suffixed `::parallel-N`, so prefix
     // matching keeps their deltas flowing to the same session view.
     const unlistenStream = dshClient.onStream((chunk) => {
+      if (isSendingRef.current) return;
       const active = activeSessionIdRef.current;
       if (chunk.conversationId && active && !chunk.conversationId.startsWith(active)) return;
       if (!chunk.stageId || !chunk.content) return;
@@ -244,6 +246,7 @@ export function App() {
 
     // Real-time tool call telemetry from kernel
     const unlistenToolEvent = dshClient.onToolEvent((msg) => {
+      if (isSendingRef.current) return;
       const active = activeSessionIdRef.current;
       if (msg.conversationId && active && !msg.conversationId.startsWith(active)) return;
       setMessages((prev) =>
@@ -291,6 +294,7 @@ export function App() {
 
     // Real-time token usage telemetry from kernel
     const unlistenTokenUsage = dshClient.onTokenUsage((msg) => {
+      if (isSendingRef.current) return;
       const active = activeSessionIdRef.current;
       if (msg.conversationId && active && !msg.conversationId.startsWith(active)) return;
       setMessages((prev) =>
@@ -308,6 +312,7 @@ export function App() {
 
     // Real-time agent status telemetry from kernel
     const unlistenAgentStatus = dshClient.onAgentStatus((msg) => {
+      if (isSendingRef.current) return;
       const active = activeSessionIdRef.current;
       if (msg.conversationId && active && !msg.conversationId.startsWith(active)) return;
       setMessages((prev) =>
@@ -633,11 +638,15 @@ export function App() {
         : createPendingMessages([activeProfile]);
 
     setDraft("");
+    isSendingRef.current = true;
     setIsSending(true);
     setMessages([...baseMessages, ...pendingMessages]);
 
+    let unlistenProgress: (() => void) | null = null;
+    let unlistenStreamEvent: (() => void) | null = null;
+
     try {
-      const unlistenProgress = await listen<OrchestrationProgressEvent>(
+      unlistenProgress = await listen<OrchestrationProgressEvent>(
         "orchestration-progress",
         (event) => {
           const { stageId, stageTitle, status: eventStatus } = event.payload;
@@ -654,7 +663,7 @@ export function App() {
       );
 
       // Real-time stream direct from kernel via Rust SSE pipe
-      const unlistenStreamEvent = await listen<any>("kernel-stream-event", (event) => {
+      unlistenStreamEvent = await listen<any>("kernel-stream-event", (event) => {
         const payload = event.payload;
         if (!payload || typeof payload !== "object") return;
 
@@ -763,8 +772,14 @@ export function App() {
         },
       });
 
-      unlistenProgress();
-      unlistenStreamEvent();
+      if (unlistenProgress) {
+        unlistenProgress();
+        unlistenProgress = null;
+      }
+      if (unlistenStreamEvent) {
+        unlistenStreamEvent();
+        unlistenStreamEvent = null;
+      }
       setMessages((prev) => {
         const mergedReplies = finalReplies.map((reply) => {
           const pending = prev.find((m) => m.id === reply.id);
@@ -810,6 +825,15 @@ export function App() {
         )
       );
     } finally {
+      if (unlistenProgress) {
+        unlistenProgress();
+        unlistenProgress = null;
+      }
+      if (unlistenStreamEvent) {
+        unlistenStreamEvent();
+        unlistenStreamEvent = null;
+      }
+      isSendingRef.current = false;
       setIsSending(false);
     }
   };
