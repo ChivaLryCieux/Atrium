@@ -165,7 +165,11 @@
     "createProject": "Create project",
     "save": "Save",
     "saving": "Saving...",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "deleteProject": "Delete project",
+    "confirmDeleteProject": "This cannot be undone. Sessions in this project move to \"{{fallback}}\" and its usage stats are removed. Delete \"{{name}}\"?",
+    "lastProjectHint": "At least one project must remain",
+    "deleteFailed": "Failed to delete project:"
   },
   "settings": {
     "backToWorkspace": "Back to workspace",

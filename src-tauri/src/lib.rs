@@ -63,6 +63,7 @@ pub fn run() {
             commands::list_projects,
             commands::create_project,
             commands::update_project,
+            commands::delete_project,
             commands::get_project_token_stats,
             commands::list_souls,
             commands::create_soul,

@@ -3,16 +3,33 @@ import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { Project, ProjectUsageStats } from "../types/chat";
+import { AppDialog } from "./AppDialog";
 
 type ProjectDialogProps = {
   mode: "create" | "edit";
   project?: Project | null;
   fallbackDirectory?: string;
+  /// True when this is the only project — deletion is blocked (backend
+  /// invariant: at least one project must exist).
+  isLastProject?: boolean;
+  /// Project that will receive the deleted project's sessions (used in the
+  /// confirmation copy so the outcome is explicit).
+  fallbackProjectName?: string;
   onClose: () => void;
   onSaved: (project: Project) => void;
+  onDeleted?: (projectId: string) => void;
 };
 
-export function ProjectDialog({ mode, project, fallbackDirectory, onClose, onSaved }: ProjectDialogProps) {
+export function ProjectDialog({
+  mode,
+  project,
+  fallbackDirectory,
+  isLastProject = false,
+  fallbackProjectName,
+  onClose,
+  onSaved,
+  onDeleted,
+}: ProjectDialogProps) {
   const { t } = useTranslation();
   const [name, setName] = useState(project?.name ?? "");
   const [description, setDescription] = useState(project?.description ?? "");
@@ -25,6 +42,7 @@ export function ProjectDialog({ mode, project, fallbackDirectory, onClose, onSav
   const [stats, setStats] = useState<ProjectUsageStats | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
     if (mode === "edit" && project) {
@@ -56,6 +74,18 @@ export function ProjectDialog({ mode, project, fallbackDirectory, onClose, onSav
   };
 
   const canSave = directories.length > 0 && !saving;
+
+  const handleDelete = async () => {
+    if (!project) return;
+    try {
+      await invoke("delete_project", { projectId: project.id });
+      onDeleted?.(project.id);
+      onClose();
+    } catch (err) {
+      console.error(t("project.deleteFailed"), err);
+      setError(String(err));
+    }
+  };
 
   const handleSave = async () => {
     if (!canSave) return;
@@ -217,6 +247,20 @@ export function ProjectDialog({ mode, project, fallbackDirectory, onClose, onSav
         </div>
 
         <div className="modal-footer">
+          {/* 危险操作置于左侧，与主行动按钮保持距离 */}
+          {mode === "edit" && project && (
+            <div style={{ marginRight: "auto" }}>
+              <button
+                type="button"
+                className="btn-danger"
+                disabled={isLastProject}
+                title={isLastProject ? t("project.lastProjectHint") : t("project.deleteProject")}
+                onClick={() => setConfirmDelete(true)}
+              >
+                {t("project.deleteProject")}
+              </button>
+            </div>
+          )}
           <button type="button" className="btn-secondary" onClick={onClose}>
             {t("project.cancel")}
           </button>
@@ -225,6 +269,26 @@ export function ProjectDialog({ mode, project, fallbackDirectory, onClose, onSav
           </button>
         </div>
       </div>
+
+      {/* 删除确认：不可逆，弹窗说明会话去向 */}
+      {confirmDelete && project && (
+        <AppDialog
+          request={{
+            kind: "confirm",
+            title: t("common.dangerAction"),
+            message: t("project.confirmDeleteProject", {
+              name: project.name,
+              fallback: fallbackProjectName || t("sidebar.untitledProject"),
+            }),
+            tone: "danger",
+            confirmText: t("project.deleteProject"),
+            onConfirm: () => {
+              void handleDelete();
+            },
+          }}
+          onClose={() => setConfirmDelete(false)}
+        />
+      )}
     </div>
   );
 }

@@ -505,6 +505,28 @@ export function App() {
       .catch(console.error);
   };
 
+  // ── Project dialog delete ────────────────────────────────────
+  // The backend re-homed the deleted project's sessions into the first
+  // remaining project, so the local session list (project ownership) and
+  // the active project both need refreshing; the git panel closes when its
+  // project disappears.
+  const handleProjectDeleted = (deletedId: string) => {
+    invoke<Project[]>("list_projects")
+      .then((list) => {
+        setProjects(list);
+        if (activeProjectId === deletedId) {
+          setActiveProjectId(list[0]?.id ?? null);
+        }
+        if (activeGitProjectId === deletedId) {
+          setActiveGitProjectId(null);
+        }
+        invoke<SessionSummary[]>("list_sessions")
+          .then(setSessions)
+          .catch(console.error);
+      })
+      .catch(console.error);
+  };
+
   // ── Souls (personas) ─────────────────────────────────────────
   const activeSoulFolder = settings?.activeSoul ?? "Default";
 
@@ -1214,8 +1236,11 @@ export function App() {
               : null
           }
           fallbackDirectory={workspacePath}
+          isLastProject={projects.length <= 1}
+          fallbackProjectName={projects.find((p) => p.id !== projectDialog.projectId)?.name}
           onClose={() => setProjectDialog(null)}
           onSaved={handleProjectSaved}
+          onDeleted={handleProjectDeleted}
         />
       )}
 

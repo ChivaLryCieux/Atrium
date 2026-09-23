@@ -558,6 +558,47 @@ pub fn update_project(app: &AppHandle, project: Project) -> Result<Project, Stri
     Ok(project)
 }
 
+/// Delete a project, re-homing its sessions into the first remaining one.
+///
+/// Sessions are history, not project fixtures — they move instead of being
+/// destroyed, so deleting a project never silently drops conversations. The
+/// last project cannot be deleted: `ensure_projects` guarantees at least one
+/// exists and an empty list would break legacy-session migration and the
+/// sidebar's default drop target.
+pub fn delete_project(app: &AppHandle, project_id: &str) -> Result<(), String> {
+    let mut projects = load_projects(app)?;
+    let Some(index) = projects.iter().position(|p| p.id == project_id) else {
+        return Err(format!("项目不存在: {project_id}"));
+    };
+    if projects.len() <= 1 {
+        return Err("至少需要保留一个项目".to_string());
+    }
+    projects.remove(index);
+    let fallback_id = projects[0].id.clone();
+
+    let mut sessions = list_sessions(app)?;
+    let mut migrated = 0usize;
+    for session in sessions.iter_mut() {
+        if session.project_id.as_deref() == Some(project_id) {
+            session.project_id = Some(fallback_id.clone());
+            migrated += 1;
+        }
+    }
+    if migrated > 0 {
+        save_session_index(app, &sessions)?;
+    }
+
+    save_projects(app, &projects)?;
+
+    // The project's usage accounting goes with it; an orphan stats row would
+    // surface in settings as a project that no longer exists.
+    let mut metrics = crate::tokens::load_metrics(app);
+    metrics.projects.retain(|p| p.project_id != project_id);
+    let _ = crate::tokens::save_metrics(app, &metrics);
+
+    Ok(())
+}
+
 /// Trim and validate a project coming from the frontend before persisting.
 pub fn normalize_project(mut project: Project) -> Project {
     project.name = project.name.trim().to_string();

@@ -348,6 +348,11 @@ pub fn update_project(app: AppHandle, project: Project) -> Result<Project, Strin
 }
 
 #[tauri::command]
+pub fn delete_project(app: AppHandle, project_id: String) -> Result<(), String> {
+    storage::delete_project(&app, &project_id)
+}
+
+#[tauri::command]
 pub fn get_project_token_stats(
     app: AppHandle,
     project_id: String,

@@ -165,7 +165,11 @@
     "createProject": "创建项目",
     "save": "保存",
     "saving": "保存中...",
-    "cancel": "取消"
+    "cancel": "取消",
+    "deleteProject": "删除项目",
+    "confirmDeleteProject": "删除后无法恢复。该项目下的会话将移至「{{fallback}}」，用量统计一并清除。确定删除「{{name}}」吗？",
+    "lastProjectHint": "至少需要保留一个项目",
+    "deleteFailed": "删除项目失败:"
   },
   "settings": {
     "backToWorkspace": "返回工作区",
