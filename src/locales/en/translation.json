@@ -38,8 +38,8 @@
     "expand": "Expand sidebar",
     "collapse": "Collapse sidebar",
     "userProfile": "Profile & account",
-    "filterPlaceholder": "Filter projects & tasks…",
-    "filterClear": "Clear filter",
+    "filterPlaceholder": "Search projects & tasks…",
+    "filterClear": "Clear search",
     "noMatch": "No matching projects or tasks"
   },
   "home": {

@@ -4243,6 +4243,20 @@ body.resizing-row * {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  /* 跟随活跃调用的展开/收起需要「流畅地呈现」：展开时滑入，收起即走 */
+  animation: toolBodySlideIn 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
+}
+
+@keyframes toolBodySlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .tool-section {

@@ -42,7 +42,11 @@ export const ToolCallTerminal: React.FC<ToolCallTerminalProps> = ({ toolCalls })
 
       <div className="tool-call-list">
         {toolCalls.map((call, idx) => (
-          <ToolCallCard key={call.id || `tool-${idx}`} item={call} defaultExpanded={call.status === "running" || toolCalls.length === 1} />
+          <ToolCallCard
+            key={call.id || `tool-${idx}`}
+            item={call}
+            autoExpanded={hasRunning && idx === toolCalls.length - 1}
+          />
         ))}
       </div>
     </div>
@@ -51,20 +55,29 @@ export const ToolCallTerminal: React.FC<ToolCallTerminalProps> = ({ toolCalls })
 
 interface ToolCallCardProps {
   item: ToolCallItem;
-  defaultExpanded?: boolean;
+  /// Container-driven follow-the-active-call target: true only for the
+  /// newest call while the turn is still working. The card follows this
+  /// until the operator manually toggles it — from then on the manual
+  /// choice wins (so a card opened after the turn settled stays open).
+  autoExpanded?: boolean;
 }
 
-const ToolCallCard: React.FC<ToolCallCardProps> = ({ item, defaultExpanded = true }) => {
+const ToolCallCard: React.FC<ToolCallCardProps> = ({ item, autoExpanded = false }) => {
   const { t } = useTranslation();
-  const [expanded, setExpanded] = useState<boolean>(defaultExpanded);
+  const [manualOverride, setManualOverride] = useState<boolean | null>(null);
   const [copiedArgs, setCopiedArgs] = useState<boolean>(false);
   const [copiedOutput, setCopiedOutput] = useState<boolean>(false);
 
+  // The follow target moving onto this card re-asserts the auto state
+  // (a newer call taking over, or a fresh turn starting).
   React.useEffect(() => {
-    if (item.status === "running") {
-      setExpanded(true);
+    if (autoExpanded) {
+      setManualOverride(null);
     }
-  }, [item.status]);
+  }, [autoExpanded]);
+
+  const expanded = manualOverride ?? autoExpanded;
+  const toggleExpanded = () => setManualOverride((prev) => !(prev ?? autoExpanded));
 
   const handleCopyArgs = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -101,12 +114,12 @@ const ToolCallCard: React.FC<ToolCallCardProps> = ({ item, defaultExpanded = tru
       {/* Header bar */}
       <div
         className="tool-call-header"
-        onClick={() => setExpanded((prev) => !prev)}
+        onClick={toggleExpanded}
         role="button"
         tabIndex={0}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
-            setExpanded((prev) => !prev);
+            toggleExpanded();
           }
         }}
       >

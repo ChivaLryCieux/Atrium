@@ -38,8 +38,8 @@
     "expand": "展开侧边栏",
     "collapse": "折叠侧边栏",
     "userProfile": "个人信息与账户",
-    "filterPlaceholder": "过滤项目与会话…",
-    "filterClear": "清除过滤",
+    "filterPlaceholder": "搜索项目与会话…",
+    "filterClear": "清除搜索",
     "noMatch": "无匹配的项目或会话"
   },
   "home": {
