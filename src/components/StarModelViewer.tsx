@@ -77,6 +77,24 @@ interface StarMeshProps {
   slowSpin?: boolean;
 }
 
+function disposeScene(scene: THREE.Object3D) {
+  scene.traverse((child) => {
+    if ((child as THREE.Mesh).isMesh) {
+      const mesh = child as THREE.Mesh;
+      if (mesh.geometry) {
+        mesh.geometry.dispose();
+      }
+      if (mesh.material) {
+        if (Array.isArray(mesh.material)) {
+          mesh.material.forEach((m) => m.dispose());
+        } else {
+          mesh.material.dispose();
+        }
+      }
+    }
+  });
+}
+
 const StarMesh: React.FC<StarMeshProps> = ({ isRotating, spinTrigger, slowSpin = false }) => {
   const groupRef = useRef<THREE.Group>(null);
   const [modelScene, setModelScene] = useState<THREE.Group | null>(null);
@@ -92,12 +110,16 @@ const StarMesh: React.FC<StarMeshProps> = ({ isRotating, spinTrigger, slowSpin =
 
   useEffect(() => {
     let active = true;
+    let loadedScene: THREE.Group | null = null;
     const loader = new GLTFLoader();
 
     loader.load(
       "/Star.glb",
       (gltf) => {
-        if (!active) return;
+        if (!active) {
+          disposeScene(gltf.scene);
+          return;
+        }
 
         // Traverse the user's actual GLB model and apply the Red+Pink+Yellow+Orange+Black shading
         // without altering or discarding the user's geometry
@@ -124,6 +146,7 @@ const StarMesh: React.FC<StarMeshProps> = ({ isRotating, spinTrigger, slowSpin =
 
         const wrapper = new THREE.Group();
         wrapper.add(gltf.scene);
+        loadedScene = wrapper;
         setModelScene(wrapper);
       },
       undefined,
@@ -134,6 +157,10 @@ const StarMesh: React.FC<StarMeshProps> = ({ isRotating, spinTrigger, slowSpin =
 
     return () => {
       active = false;
+      if (loadedScene) {
+        disposeScene(loadedScene);
+        loadedScene = null;
+      }
     };
   }, []);
 

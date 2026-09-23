@@ -52,6 +52,31 @@ export function estimateTokens(text: string): number {
   return Math.max(count, 1);
 }
 
+const TOKEN_CACHE_MAX = 500;
+const tokenCache = new Map<string, number>();
+
+export function estimateTokensCached(text: string): number {
+  if (!text) return 0;
+  if (text.length > 50000) {
+    return estimateTokens(text);
+  }
+  const cached = tokenCache.get(text);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const val = estimateTokens(text);
+  if (tokenCache.size >= TOKEN_CACHE_MAX) {
+    const iter = tokenCache.keys();
+    for (let i = 0; i < Math.floor(TOKEN_CACHE_MAX / 2); i++) {
+      const next = iter.next();
+      if (next.done) break;
+      tokenCache.delete(next.value);
+    }
+  }
+  tokenCache.set(text, val);
+  return val;
+}
+
 /**
  * Resolves the ceiling context window for the active model.
  * Atrium models use 256K (256,000) or 1M (1,000,000).
@@ -112,7 +137,7 @@ export const StageTelemetryHud: React.FC<StageTelemetryHudProps> = ({
     for (const msg of messages) {
       if (msg.role === "user") {
         // User messages are part of the prompt context
-        total += msg.promptTokens ?? estimateTokens(msg.content);
+        total += msg.promptTokens ?? estimateTokensCached(msg.content);
       } else if (msg.role === "assistant") {
         const hasPrompt = typeof msg.promptTokens === "number" && msg.promptTokens > 0;
         const hasCompletion = typeof msg.completionTokens === "number" && msg.completionTokens > 0;
@@ -129,7 +154,7 @@ export const StageTelemetryHud: React.FC<StageTelemetryHudProps> = ({
           ) {
             continue;
           }
-          total += estimateTokens(msg.content);
+          total += msg.pending ? estimateTokens(msg.content) : estimateTokensCached(msg.content);
         }
       }
     }
@@ -197,7 +222,7 @@ export const StageTelemetryHud: React.FC<StageTelemetryHudProps> = ({
           totalCompletionTokens += comp;
         }
       } else {
-        const comp = msg.completionTokens ?? (msg.content ? estimateTokens(msg.content) : 0);
+        const comp = msg.completionTokens ?? (msg.content ? estimateTokensCached(msg.content) : 0);
         const lat =
           msg.latencyMs && msg.latencyMs > 0
             ? msg.latencyMs / 1000
