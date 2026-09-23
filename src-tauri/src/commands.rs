@@ -90,13 +90,35 @@ pub async fn execute_orchestration(
         &request.profiles,
         &request.messages,
         &request.mode,
-        request.conversation_id,
+        request.conversation_id.clone(),
         request.reasoning_effort,
         request.execution_mode,
         project.as_ref().map(|p| (p.id.as_str(), p.name.as_str(), p.default_directory.as_deref())),
         soul.as_deref(),
     )
     .await;
+
+    // Server-side persistence: settle the turn into the session file so the
+    // frontend needs no extra save_session_messages/list_sessions round-trip
+    // after every reply. Messages = base + merged replies.
+    if let Some(session_id) = &request.conversation_id {
+        let mut persisted = request.messages.clone();
+        for reply in &replies {
+            // A reply whose id matches a prior message replaces it (retry);
+            // otherwise it appends.
+            if let Some(slot) = persisted.iter_mut().find(|m| m.id == reply.id) {
+                *slot = reply.clone();
+            } else {
+                persisted.push(reply.clone());
+            }
+        }
+        if let Err(err) = storage::save_session_messages(&app, session_id, &persisted) {
+            // Persistence failure must not fail the turn the user already
+            // saw; the frontend's debounced autosave remains the safety net.
+            eprintln!("[orchestration] session persist failed: {err}");
+        }
+    }
+
     Ok(replies)
 }
 
@@ -317,6 +339,17 @@ pub fn create_session(
     storage::create_session_in_project(&app, &t, project_id.as_deref())
 }
 
+/// Next default task title parts ("任务N：M.D"); the webview localizes the
+/// final string. Returns {number, date} instead of a finished string so the
+/// kernel side stays i18n-free.
+#[tauri::command]
+pub fn generate_session_title(
+    app: AppHandle,
+    project_id: Option<String>,
+) -> Result<storage::SessionSummaryTitle, String> {
+    storage::generate_session_title(&app, project_id.as_deref())
+}
+
 // ─── Projects ──────────────────────────────────────────────────
 
 #[tauri::command]
@@ -350,6 +383,16 @@ pub fn update_project(app: AppHandle, project: Project) -> Result<Project, Strin
 #[tauri::command]
 pub fn delete_project(app: AppHandle, project_id: String) -> Result<(), String> {
     storage::delete_project(&app, &project_id)
+}
+
+/// One-round-trip project deletion: returns the refreshed project/session
+/// lists plus the fallback project id for the UI to activate.
+#[tauri::command]
+pub fn delete_project_aggregated(
+    app: AppHandle,
+    project_id: String,
+) -> Result<storage::ProjectDeletionResult, String> {
+    storage::delete_project_aggregated(&app, &project_id)
 }
 
 #[tauri::command]

@@ -327,6 +327,96 @@ pub fn create_session_in_project(
     Ok(summary)
 }
 
+/// Generate the next default task title, scoped to a project when given.
+///
+/// Titles follow "任务N：M.D" (or "Task N: M.D" once localized by the
+/// caller); the sequence number is one past the highest existing "任务N"
+/// within the project, so numbering survives deletions (max+1) and never
+/// collides (length+1 floor). Passing `null` numbers across all sessions.
+pub fn generate_session_title(
+    app: &AppHandle,
+    project_id: Option<&str>,
+) -> Result<SessionSummaryTitle, String> {
+    let sessions = list_sessions(app)?;
+    let relevant: Vec<&SessionSummary> = sessions
+        .iter()
+        .filter(|s| project_id.is_none() || s.project_id.as_deref() == project_id)
+        .collect();
+
+    let mut max_num: u32 = 0;
+    for s in &relevant {
+        // Extract the trailing number from "任务N" / "Task N" prefixes.
+        let title = &s.title;
+        let mut idx = 0usize;
+        let mut prefix_task = false;
+        while idx < title.len() {
+            let rest = &title[idx..];
+            if rest.starts_with("任务") {
+                idx += "任务".len();
+                prefix_task = true;
+                break;
+            }
+            if rest.len() >= 4 && rest[..4].eq_ignore_ascii_case("task") {
+                idx += 4;
+                prefix_task = true;
+                break;
+            }
+            idx += 1;
+        }
+        if !prefix_task {
+            continue;
+        }
+        let rest = &title[idx..];
+        let rest = rest.trim_start();
+        let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+        if let Ok(n) = digits.parse::<u32>() {
+            if n > max_num {
+                max_num = n;
+            }
+        }
+    }
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    // "M.D" from the local date components (UTC-backed; matching the
+    // frontend's previous local-date behavior closely enough for a label).
+    let days = now / 86_400;
+    let (year, month, day) = civil_from_days(days as i64);
+    let _ = year;
+
+    let next_num = std::cmp::max(relevant.len() as u32 + 1, max_num + 1);
+    Ok(SessionSummaryTitle {
+        number: next_num,
+        date: format!("{month}.{day}"),
+    })
+}
+
+/// Numeric parts of a generated default title; the frontend localizes the
+/// final string (i18n lives in the webview, not the kernel side).
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionSummaryTitle {
+    pub number: u32,
+    /// "M.D" (e.g. "9.23").
+    pub date: String,
+}
+
+/// Days-since-epoch → (year, month, day). Howard Hinnant's algorithm.
+fn civil_from_days(z: i64) -> (i64, u32, u32) {
+    let z = z + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = (z - era * 146_097) as u64; // [0, 146096]
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365; // [0, 399]
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100); // [0, 365]
+    let mp = (5 * doy + 2) / 153; // [0, 11]
+    let d = (doy - (153 * mp + 2) / 5 + 1) as u32; // [1, 31]
+    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32; // [1, 12]
+    (if m <= 2 { y + 1 } else { y }, m, d)
+}
+
 /// Look up one session summary by id (used to resolve the owning project).
 pub fn find_session(app: &AppHandle, session_id: &str) -> Option<SessionSummary> {
     list_sessions(app)
@@ -597,6 +687,61 @@ pub fn delete_project(app: &AppHandle, project_id: &str) -> Result<(), String> {
     let _ = crate::tokens::save_metrics(app, &metrics);
 
     Ok(())
+}
+
+/// Aggregated result of `delete_project_aggregated`: everything the dialog
+/// needs to refresh local state in one round-trip (projects after deletion,
+/// sessions after re-homing, and the project the UI should activate).
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectDeletionResult {
+    pub projects: Vec<Project>,
+    pub sessions: Vec<SessionSummary>,
+    pub fallback_project_id: Option<String>,
+}
+
+/// Delete a project and return the refreshed (projects, sessions) lists plus
+/// the remaining fallback project id, so the frontend needs one invoke
+/// instead of delete → list_projects → list_sessions.
+pub fn delete_project_aggregated(
+    app: &AppHandle,
+    project_id: &str,
+) -> Result<ProjectDeletionResult, String> {
+    let mut projects = load_projects(app)?;
+    let Some(index) = projects.iter().position(|p| p.id == project_id) else {
+        return Err(format!("项目不存在: {project_id}"));
+    };
+    if projects.len() <= 1 {
+        return Err("至少需要保留一个项目".to_string());
+    }
+    projects.remove(index);
+    let fallback_id = projects[0].id.clone();
+
+    let mut sessions = list_sessions(app)?;
+    let mut migrated = 0usize;
+    for session in sessions.iter_mut() {
+        if session.project_id.as_deref() == Some(project_id) {
+            session.project_id = Some(fallback_id.clone());
+            migrated += 1;
+        }
+    }
+    if migrated > 0 {
+        save_session_index(app, &sessions)?;
+    }
+
+    save_projects(app, &projects)?;
+
+    // Mirror delete_project's cleanup: usage rows for a vanished project
+    // would surface in settings as a project that no longer exists.
+    let mut metrics = crate::tokens::load_metrics(app);
+    metrics.projects.retain(|p| p.project_id != project_id);
+    let _ = crate::tokens::save_metrics(app, &metrics);
+
+    Ok(ProjectDeletionResult {
+        projects,
+        sessions,
+        fallback_project_id: Some(fallback_id),
+    })
 }
 
 /// Trim and validate a project coming from the frontend before persisting.
