@@ -32,6 +32,9 @@ import { usePanelLayout } from "./hooks/usePanelLayout";
 import { buildCommandActions, useAvailableCommands } from "./hooks/useCommandActions";
 import { useAppBootstrap } from "./hooks/useAppBootstrap";
 import { useKernelStreams } from "./hooks/useKernelStreams";
+import { useChatPersistence } from "./hooks/useChatPersistence";
+import { useComposerDrafts } from "./hooks/useComposerDrafts";
+import { useActiveProfile } from "./hooks/useActiveProfile";
 import { dshClient } from "./services/dshClient";
 import { applyTheme, normalizeThemeMode } from "./themes";
 import { useTranslation } from "react-i18next";
@@ -75,7 +78,6 @@ export function App() {
   const [currentView, setCurrentView] = useState<"workspace" | "settings">("workspace");
   const [isAboutOpen, setIsAboutOpen] = useState<boolean>(false);
   const [workspacePath, setWorkspacePath] = useState<string>("");
-  const [orchestrationStages, setOrchestrationStages] = useState<OrchestrationStage[]>([]);
   const [terminals, setTerminals] = useState<TerminalSession[]>([]);
   const [activeTerminalId, setActiveTerminalId] = useState<string | null>(null);
   const [isTerminalOpen, setIsTerminalOpen] = useState<boolean>(false);
@@ -95,7 +97,6 @@ export function App() {
     handleResetTerminal,
   } = usePanelLayout();
 
-  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const activeSessionIdRef = useRef<string | null>(null);
   const isSendingRef = useRef<boolean>(false);
   const tRef = useRef(t);
@@ -146,80 +147,17 @@ export function App() {
   }, [settings?.fontSize]);
 
   // ── Persist chat history (debounced) ─────────────────────────
-  useEffect(() => {
-    if (!settings || messages.length === 0) return;
-    if (saveTimeoutRef.current !== undefined) {
-      clearTimeout(saveTimeoutRef.current);
-    }
-    const timeoutId = setTimeout(() => {
-      if (activeSessionId) {
-        invoke("save_session_messages", {
-          sessionId: activeSessionId,
-          messages,
-        })
-          .then(() => {
-            invoke<SessionSummary[]>("list_sessions")
-              .then(setSessions)
-              .catch(console.error);
-          })
-          .catch(console.error);
-      }
-      invoke("save_history", { messages }).catch(console.error);
-    }, 500);
-    saveTimeoutRef.current = timeoutId;
-  }, [messages, activeSessionId, settings]);
+  useChatPersistence(settings, messages, activeSessionId, setSessions);
 
   // ── Composer drafts: per-session persistence ─────────────────
-  // Switching sessions swaps in that session's stored draft (the greeting
-  // stage shares one bucket), edits persist debounced. The save effect
-  // re-arms on every (draft, session) change, so the transient render right
-  // after a session switch (old text, new key) never flushes a wrong value.
-  const draftTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-
-  useEffect(() => {
-    setDraft(loadDraft(activeSessionId));
-  }, [activeSessionId]);
-
-  useEffect(() => {
-    if (draftTimerRef.current !== undefined) {
-      clearTimeout(draftTimerRef.current);
-    }
-    draftTimerRef.current = setTimeout(() => {
-      saveDraft(activeSessionId, draft);
-    }, 300);
-    return () => {
-      if (draftTimerRef.current !== undefined) {
-        clearTimeout(draftTimerRef.current);
-      }
-    };
-  }, [draft, activeSessionId]);
+  useComposerDrafts(draft, activeSessionId, setDraft);
 
   // ── Derived active profile ───────────────────────────────────
-  const activeProfile = useMemo(() => {
-    return (
-      settings?.aiProfiles.find((p) => p.id === activeProfileId) ||
-      settings?.aiProfiles[0] ||
-      null
-    );
-  }, [activeProfileId, settings]);
-
-  // ── Follow the active profile's default model on switch ──────
-  useEffect(() => {
-    if (activeProfile?.model) {
-      setSelectedModel(activeProfile.model);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeProfileId]);
-
-  // ── Build Orchestration Stages ───────────────────────────────
-  useEffect(() => {
-    if (!activeProfile || !settings) return;
-    invoke<OrchestrationStage[]>("build_orchestration", {
-      profiles: [activeProfile],
-    })
-      .then(setOrchestrationStages)
-      .catch(console.error);
-  }, [activeProfile, settings]);
+  const { activeProfile, orchestrationStages } = useActiveProfile(
+    settings,
+    activeProfileId,
+    setSelectedModel,
+  );
 
   // ── Save Settings Helper ─────────────────────────────────────
   const handleSaveSettings = async (nextSettings: AppSettings) => {
