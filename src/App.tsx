@@ -35,6 +35,7 @@ import { useKernelStreams } from "./hooks/useKernelStreams";
 import { useChatPersistence } from "./hooks/useChatPersistence";
 import { useComposerDrafts } from "./hooks/useComposerDrafts";
 import { useActiveProfile } from "./hooks/useActiveProfile";
+import { useSendMessage } from "./hooks/useSendMessage";
 import { dshClient } from "./services/dshClient";
 import { applyTheme, normalizeThemeMode } from "./themes";
 import { useTranslation } from "react-i18next";
@@ -350,266 +351,30 @@ export function App() {
     }
   };
 
-  // ── Send Message ─────────────────────────────────────────────
-  const handleSend = async () => {
-    if (!draft.trim() || !activeProfile || !settings || isSending) return;
-
-    let curSessionId = activeSessionId;
-    if (!curSessionId) {
-      try {
-        const title = generateDefaultTaskTitle(sessions, activeProjectId, t);
-        const created = await invoke<SessionSummary>("create_session", {
-          title,
-          projectId: activeProjectId,
-        });
-        curSessionId = created.id;
-        setActiveSessionId(curSessionId);
-        setSessions((prev) => [created, ...prev.filter((s) => s.id !== created.id)]);
-      } catch (err) {
-        console.error(t("app.createSessionFailed"), err);
-      }
-    }
-
-    if (curSessionId) {
-      activeSessionIdRef.current = curSessionId;
-    }
-    dshClient.ensureConnected();
-
-    const userMessage = createUserMessage(draft.trim(), settings.userName || "Tempsyche");
-    const baseMessages = [...messages, userMessage];
-
-    // One pending bubble per pipeline node; its id equals the stage id so the
-    // kernel's streamed deltas and settled replies land in the same node.
-    // Single mode has exactly one deterministic node id (`<profile>-single`,
-    // mirroring the backend), so streaming matches without a random UUID.
-    const isSingleMode = settings.orchestrationMode === "single";
-    const pendingMessages: PendingMessage[] = isSingleMode
-      ? [
-          {
-            id: `${activeProfile.id}-single`,
-            role: "assistant" as const,
-            content: t("app.thinking"),
-            speakerId: activeProfile.id,
-            speakerName: activeProfile.name,
-            avatar: activeProfile.avatar,
-            pending: true as const,
-          },
-        ]
-      : orchestrationStages.length > 0
-        ? orchestrationStages.map((stage) => ({
-            id: stage.id,
-            role: "assistant" as const,
-            content: t("app.thinking"),
-            speakerId: stage.profile.id,
-            speakerName: `${stage.title} · ${stage.profile.name}`,
-            avatar: stage.profile.avatar,
-            pending: true as const,
-          }))
-        : createPendingMessages([activeProfile]);
-
-    setDraft("");
-    isSendingRef.current = true;
-    setIsSending(true);
-    setMessages([...baseMessages, ...pendingMessages]);
-
-    let unlistenProgress: (() => void) | null = null;
-    let unlistenStreamEvent: (() => void) | null = null;
-
-    try {
-      unlistenProgress = await listen<OrchestrationProgressEvent>(
-        "orchestration-progress",
-        (event) => {
-          const { stageId, stageTitle, status: eventStatus } = event.payload;
-          if (eventStatus === "running") {
-            setMessages((prev) =>
-              prev.map((msg) =>
-                msg.pending && (!stageId || msg.id === stageId) && msg.content === t("app.thinking")
-                  ? { ...msg, content: `[${stageTitle}] ${t("app.stageAnalyzing")}` }
-                  : msg
-              )
-            );
-          }
-        }
-      );
-
-      // Real-time stream direct from kernel via Rust SSE pipe
-      unlistenStreamEvent = await listen<any>("kernel-stream-event", (event) => {
-        const payload = event.payload;
-        if (!payload || typeof payload !== "object") return;
-
-        const active = activeSessionIdRef.current;
-        if (payload.conversationId && active && !payload.conversationId.startsWith(active)) return;
-
-        if (payload.type === "assistant-stream") {
-          const { stageId, content, isReasoning } = payload;
-          if (!content) return;
-          setMessages((prev) =>
-            prev.map((msg) => {
-              const matches = stageId ? msg.id === stageId : msg.pending && msg.role === "assistant";
-              if (!matches || !msg.pending) return msg;
-              if (isReasoning) {
-                return {
-                  ...msg,
-                  reasoningContent: (msg.reasoningContent || "") + content,
-                };
-              }
-              const isPlaceholder =
-                msg.content === tRef.current("app.thinking") ||
-                msg.content.includes(tRef.current("app.stageAnalyzing")) ||
-                (msg.content.startsWith("[") && msg.content.includes("]"));
-              return { ...msg, content: isPlaceholder ? content : msg.content + content };
-            })
-          );
-        } else if (payload.type === "tool-event") {
-          const { stageId, event: toolEvt } = payload;
-          if (!toolEvt) return;
-          setMessages((prev) =>
-            prev.map((m) => {
-              const matches = stageId ? m.id === stageId : m.pending && m.role === "assistant";
-              if (!matches) return m;
-
-              const currentTools = Array.isArray(m.toolCalls) ? [...m.toolCalls] : [];
-              if (toolEvt.kind === "call") {
-                const item = toolEvt.item;
-                const idx = currentTools.findIndex((t) => t.id === item.id);
-                if (idx >= 0) {
-                  currentTools[idx] = { ...currentTools[idx], ...item };
-                } else {
-                  currentTools.push(item);
-                }
-              } else if (toolEvt.kind === "result") {
-                const { callId, result, isError, error, status } = toolEvt;
-                const idx = currentTools.findIndex((t) => t.id === callId);
-                if (idx >= 0) {
-                  currentTools[idx] = { ...currentTools[idx], result, isError, error, status };
-                } else {
-                  currentTools.push({
-                    id: callId,
-                    name: "tool",
-                    arguments: "",
-                    result,
-                    isError,
-                    error,
-                    status,
-                    timestamp: Date.now(),
-                  });
-                }
-              }
-              return { ...m, toolCalls: currentTools };
-            })
-          );
-        } else if (payload.type === "token-usage") {
-          const { stageId, usage } = payload;
-          if (!usage) return;
-          setMessages((prev) =>
-            prev.map((m) => {
-              const matches = stageId ? m.id === stageId : m.pending && m.role === "assistant";
-              if (!matches) return m;
-              // 同 WS 监听：乱序的小额用量通知不得让计量回落。
-              return { ...m, ...mergeTokenHighWaterMark(m, usage) };
-            })
-          );
-        } else if (payload.type === "agent-status") {
-          const { stageId, detail } = payload;
-          if (!detail) return;
-          setMessages((prev) =>
-            prev.map((m) => {
-              const matches = stageId ? m.id === stageId : m.pending && m.role === "assistant";
-              if (!matches || !m.pending) return m;
-              return { ...m, statusDetail: detail };
-            })
-          );
-        }
-      });
-
-      // Execute request
-      const finalReplies = await invoke<ChatMessage[]>("execute_orchestration", {
-        request: {
-          profiles: [
-            {
-              ...activeProfile,
-              model: selectedModel || activeProfile.model,
-            },
-          ],
-          messages: baseMessages,
-          mode: settings.orchestrationMode,
-          conversationId: curSessionId,
-          reasoningEffort,
-          executionMode,
-        },
-      });
-
-      if (unlistenProgress) {
-        unlistenProgress();
-        unlistenProgress = null;
-      }
-      if (unlistenStreamEvent) {
-        unlistenStreamEvent();
-        unlistenStreamEvent = null;
-      }
-      setMessages((prev) => {
-        const mergedReplies = finalReplies.map((reply) => {
-          const pending = prev.find((m) => m.id === reply.id);
-          const toolCalls =
-            reply.toolCalls && reply.toolCalls.length > 0
-              ? reply.toolCalls
-              : pending?.toolCalls ?? null;
-          // 结算合并同样走高水位：回复载荷若缺失/小于流式期间已记录的
-          // 内核精确值，保留较大者，避免「落定瞬间数字回落」。
-          const watermark = mergeTokenHighWaterMark(pending ?? {}, {
-            inputTokens: reply.promptTokens ?? 0,
-            outputTokens: reply.completionTokens ?? 0,
-          });
-          const promptTokens = watermark.promptTokens || null;
-          const completionTokens = watermark.completionTokens || null;
-          const reasoningContent = reply.reasoningContent || pending?.reasoningContent || null;
-          return {
-            ...reply,
-            toolCalls,
-            promptTokens,
-            completionTokens,
-            reasoningContent,
-          };
-        });
-        const updatedMessages = [...baseMessages, ...mergedReplies];
-        if (curSessionId) {
-          invoke("save_session_messages", {
-            sessionId: curSessionId,
-            messages: updatedMessages,
-          })
-            .then(() => {
-              invoke<SessionSummary[]>("list_sessions").then(setSessions).catch(console.error);
-            })
-            .catch(console.error);
-        }
-        return updatedMessages;
-      });
-    } catch (error) {
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg.pending
-            ? {
-                ...msg,
-                content: `${t("app.dispatchError")} ${String(error)}`,
-                pending: false,
-                error: true,
-              }
-            : msg
-        )
-      );
-    } finally {
-      if (unlistenProgress) {
-        unlistenProgress();
-        unlistenProgress = null;
-      }
-      if (unlistenStreamEvent) {
-        unlistenStreamEvent();
-        unlistenStreamEvent = null;
-      }
-      isSendingRef.current = false;
-      setIsSending(false);
-    }
-  };
+  // ── Send pipeline (verbatim move → hooks/useSendMessage) ────
+  const { handleSend } = useSendMessage({
+    settings,
+    activeProfile,
+    selectedModel,
+    reasoningEffort,
+    executionMode,
+    orchestrationStages,
+    draft,
+    isSending,
+    messages,
+    sessions,
+    activeSessionId,
+    activeProjectId,
+    activeSessionIdRef,
+    isSendingRef,
+    tRef,
+    setDraft,
+    setIsSending,
+    setMessages,
+    setSessions,
+    setActiveSessionId,
+    t,
+  });
 
   // ── Embedded terminal dock (bottom of main area) ─────────────
   const terminalCwd = useMemo(() => {
