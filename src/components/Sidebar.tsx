@@ -137,6 +137,23 @@ export function Sidebar({
 
   const unassignedTasks = tasks.filter((t) => !t.projectId || !projects.some((p) => p.id === t.projectId));
 
+  // ── Filter (project / task quick find) ───────────────────────
+  const [filter, setFilter] = useState("");
+  const query = filter.trim().toLowerCase();
+  const taskMatches = (task: TaskSummary) =>
+    !query ||
+    (task.title || "").toLowerCase().includes(query) ||
+    (projects.find((p) => p.id === task.projectId)?.name ?? "").toLowerCase().includes(query);
+  const visibleProjects = query
+    ? projects.filter(
+        (p) =>
+          (p.name || "").toLowerCase().includes(query) ||
+          tasks.some((task) => task.projectId === p.id && taskMatches(task)),
+      )
+    : projects;
+  const visibleUnassigned = query ? unassignedTasks.filter(taskMatches) : unassignedTasks;
+  const hasFilterResults = visibleProjects.length > 0 || visibleUnassigned.length > 0;
+
   const renderTaskItem = (task: TaskSummary, isNested: boolean) => {
     const isEditing = editingTaskId === task.id;
     return (
@@ -257,13 +274,41 @@ export function Sidebar({
       </div>
 
       {/* Project Tree: static label + expandable folders */}
+      <div className="sidebar-filter">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="11" cy="11" r="7" />
+          <line x1="21" y1="21" x2="16.5" y2="16.5" strokeLinecap="round" />
+        </svg>
+        <input
+          type="text"
+          className="sidebar-filter-input"
+          value={filter}
+          placeholder={t("sidebar.filterPlaceholder")}
+          onChange={(e) => setFilter(e.target.value)}
+        />
+        {filter && (
+          <button
+            type="button"
+            className="sidebar-filter-clear"
+            title={t("sidebar.filterClear")}
+            onClick={() => setFilter("")}
+          >
+            ✕
+          </button>
+        )}
+      </div>
+
       <div className="sidebar-list-content">
         <div className="list-section-header">{t("sidebar.projectList")}</div>
 
-        {projects.length > 0 ? (
-          projects.map((project) => {
+        {!hasFilterResults && query && <div className="list-empty-item">{t("sidebar.noMatch")}</div>}
+
+        {visibleProjects.length > 0 ? (
+          visibleProjects.map((project) => {
             const projectTasks = tasks.filter((t) => t.projectId === project.id);
-            const expanded = expandedIds.has(project.id);
+            // While filtering, matched groups are force-expanded so results
+            // are visible without extra clicks.
+            const expanded = query ? true : expandedIds.has(project.id);
             return (
               <div key={project.id} className="project-node">
                 <div
@@ -350,8 +395,8 @@ export function Sidebar({
 
                 {expanded && (
                   <div className="project-tasks">
-                    {projectTasks.length > 0 ? (
-                      projectTasks.map((task) => renderTaskItem(task, true))
+                    {projectTasks.some(taskMatches) ? (
+                      projectTasks.filter(taskMatches).map((task) => renderTaskItem(task, true))
                     ) : (
                       <div className="list-empty-item">{t("sidebar.noTasks")}</div>
                     )}
@@ -361,14 +406,14 @@ export function Sidebar({
             );
           })
         ) : (
-          <div className="list-empty-item">{t("sidebar.noProjects")}</div>
+          !query && <div className="list-empty-item">{t("sidebar.noProjects")}</div>
         )}
 
         {/* Sessions that predate any known project (defensive) */}
-        {unassignedTasks.length > 0 && (
+        {visibleUnassigned.length > 0 && (
           <>
             <div className="list-section-header">{t("sidebar.ungrouped")}</div>
-            {unassignedTasks.map((task) => renderTaskItem(task, false))}
+            {visibleUnassigned.map((task) => renderTaskItem(task, false))}
           </>
         )}
       </div>

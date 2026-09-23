@@ -37,7 +37,10 @@
     "ungrouped": "Ungrouped tasks",
     "expand": "Expand sidebar",
     "collapse": "Collapse sidebar",
-    "userProfile": "Profile & account"
+    "userProfile": "Profile & account",
+    "filterPlaceholder": "Filter projects & tasks…",
+    "filterClear": "Clear filter",
+    "noMatch": "No matching projects or tasks"
   },
   "home": {
     "greeting": "您的智能体清醒着",
