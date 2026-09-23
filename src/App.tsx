@@ -34,6 +34,7 @@ import {
 } from "./types/chat";
 import { createPendingMessages } from "./utils/messages";
 import { generateDefaultTaskTitle } from "./utils/tasks";
+import { loadDraft, saveDraft } from "./utils/drafts";
 import { dshClient } from "./services/dshClient";
 import { applyTheme, normalizeThemeMode } from "./themes";
 import type { ThemeMode } from "./themes";
@@ -397,6 +398,31 @@ export function App() {
     saveTimeoutRef.current = timeoutId;
   }, [messages, activeSessionId, settings]);
 
+  // ── Composer drafts: per-session persistence ─────────────────
+  // Switching sessions swaps in that session's stored draft (the greeting
+  // stage shares one bucket), edits persist debounced. The save effect
+  // re-arms on every (draft, session) change, so the transient render right
+  // after a session switch (old text, new key) never flushes a wrong value.
+  const draftTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  useEffect(() => {
+    setDraft(loadDraft(activeSessionId));
+  }, [activeSessionId]);
+
+  useEffect(() => {
+    if (draftTimerRef.current !== undefined) {
+      clearTimeout(draftTimerRef.current);
+    }
+    draftTimerRef.current = setTimeout(() => {
+      saveDraft(activeSessionId, draft);
+    }, 300);
+    return () => {
+      if (draftTimerRef.current !== undefined) {
+        clearTimeout(draftTimerRef.current);
+      }
+    };
+  }, [draft, activeSessionId]);
+
   // ── Derived active profile ───────────────────────────────────
   const activeProfile = useMemo(() => {
     return (
@@ -458,7 +484,9 @@ export function App() {
       });
       setActiveSessionId(created.id);
       setMessages([]);
-      setDraft("");
+      // The composer swaps to the new session's (empty) draft via the
+      // activeSessionId effect — an explicit clear here would also wipe the
+      // preserved home draft when a task is started from the greeting stage.
       setSessions((prev) => [created, ...prev.filter((s) => s.id !== created.id)]);
     } catch (err) {
       console.error(t("app.createSessionFailed"), err);
