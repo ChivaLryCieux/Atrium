@@ -1299,11 +1299,25 @@ body.resizing-row * {
 .chat-message-stream {
   flex: 1;
   overflow-y: auto;
+  position: relative;
   /* Reserve 220px on the right so dialogue bubbles never collide or intersect with StageTelemetryHud */
   padding: 24px 220px 24px 32px;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
+  /* Virtualized stream: rows are absolutely positioned slots inside the
+     sizer, so the classic flex column + gap no longer applies. The 24px top
+     padding is mirrored by the virtualizer's scrollMargin. */
+}
+
+.chat-message-sizer {
+  position: relative;
+  width: 100%;
+}
+
+.message-row-slot {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  will-change: transform;
 }
 
 .message-bubble-row {

@@ -10,13 +10,11 @@ import { SoulManagerDialog } from "./components/SoulManagerDialog";
 import { AboutDialog } from "./components/AboutDialog";
 import { GitSourceControlPanel } from "./components/GitSourceControlPanel";
 import { PromptCard } from "./components/PromptCard";
-import { Markdown } from "./components/Markdown";
 import { TerminalPanel, TerminalSession } from "./components/TerminalPanel";
 import { PanelResizer } from "./components/PanelResizer";
-import Grainient from "./components/Grainient";
+import { Grainient } from "./components/Grainient";
 import { StageTelemetryHud } from "./components/StageTelemetryHud";
-import { ToolCallTerminal } from "./components/ToolCallTerminal";
-import { ReasoningAccordion } from "./components/ReasoningAccordion";
+import { MessageStream } from "./components/MessageStream";
 import { useToast } from "./components/Toast";
 import { createUserMessage } from "./constants/defaults";
 import {
@@ -133,7 +131,6 @@ export function App() {
   }, []);
 
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const messageEndRef = useRef<HTMLDivElement | null>(null);
   const activeSessionIdRef = useRef<string | null>(null);
   const isSendingRef = useRef<boolean>(false);
   const tRef = useRef(t);
@@ -346,13 +343,6 @@ export function App() {
       unlistenAgentStatus();
     };
   }, []);
-
-  // ── Auto-scroll to latest message ────────────────────────────
-  useEffect(() => {
-    if (messages.length > 0) {
-      messageEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [messages]);
 
   // ── Apply theme + font scale ─────────────────────────────────
   useEffect(() => {
@@ -1157,87 +1147,11 @@ export function App() {
               ) : (
                 /* Active Conversation View — WeChat style: avatar + bubble rows */
                 <div className="chat-conversation-view">
-                  <div className="chat-message-stream">
-                    {messages.map((msg) =>
-                      msg.role === "user" ? (
-                        <div key={msg.id} className="message-bubble-row user">
-                          <div className="bubble-body user-bubble">
-                            <button
-                              type="button"
-                              className="bubble-copy-btn"
-                              title={t("app.copyMessage")}
-                              onClick={() => void copyMessage(msg.content)}
-                            >
-                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <rect x="9" y="9" width="12" height="12" rx="2" />
-                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                              </svg>
-                            </button>
-                            <div className="bubble-text">{msg.content}</div>
-                          </div>
-                          <div
-                            className="chat-avatar user-avatar"
-                            title={settings?.userName?.trim() || t("app.me")}
-                          >
-                            {(settings?.userName?.trim() || t("app.me")).charAt(0).toUpperCase()}
-                          </div>
-                        </div>
-                      ) : (
-                        <div key={msg.id} className={`message-bubble-row assistant${msg.error ? " error" : ""}`}>
-                          <div className="chat-avatar ai-avatar" title={msg.speakerName}>
-                            <img src="/logo.png" alt={msg.speakerName} />
-                          </div>
-                          <div className="bubble-body ai-bubble">
-                            <div className="speaker-header">
-                              <span className="speaker-name">{msg.speakerName}</span>
-                            </div>
-                            {(msg.reasoningContent || (msg.pending && (msg.content === t("app.thinking") || msg.content.includes(t("app.stageAnalyzing"))))) ? (
-                              <ReasoningAccordion
-                                reasoning={msg.reasoningContent}
-                                isStreaming={Boolean(msg.pending && (msg.content === t("app.thinking") || msg.content.includes(t("app.stageAnalyzing"))))}
-                                latencyMs={msg.latencyMs}
-                                reasoningDurationMs={msg.reasoningDurationMs}
-                                statusDetail={msg.statusDetail}
-                              />
-                            ) : null}
-                            {(!msg.pending ||
-                              (msg.content !== t("app.thinking") &&
-                                !msg.content.includes(t("app.stageAnalyzing")) &&
-                                !(msg.content.startsWith("[") && msg.content.includes("]")))) ? null : (
-                              !msg.reasoningContent ? (
-                                <div className="agent-thinking-hint">
-                                  {msg.statusDetail || t("app.thinking")}
-                                </div>
-                              ) : null
-                            )}
-                            {msg.toolCalls && msg.toolCalls.length > 0 && (
-                              <ToolCallTerminal toolCalls={msg.toolCalls} />
-                            )}
-                            {(!msg.pending ||
-                              (msg.content !== t("app.thinking") &&
-                                !msg.content.includes(t("app.stageAnalyzing")) &&
-                                !(msg.content.startsWith("[") && msg.content.includes("]")))) && (
-                              <div className="bubble-text"><Markdown text={msg.content} /></div>
-                            )}
-                            {!msg.pending && (
-                              <button
-                                type="button"
-                                className="bubble-copy-btn"
-                                title={t("app.copyMessage")}
-                                onClick={() => void copyMessage(msg.content)}
-                              >
-                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                  <rect x="9" y="9" width="12" height="12" rx="2" />
-                                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                                </svg>
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      )
-                    )}
-                    <div ref={messageEndRef} />
-                  </div>
+                  <MessageStream
+                    messages={messages}
+                    userName={settings?.userName?.trim() || t("app.me")}
+                    onCopyMessage={(content) => void copyMessage(content)}
+                  />
 
                   {/* Bottom Docked Input Box in Active Chat */}
                   <div className="chat-docked-input">

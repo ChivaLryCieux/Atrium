@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@react-three/fiber": "^8.18.0",
+    "@tanstack/react-virtual": "^3.14.13",
     "@tauri-apps/api": "^2.9.0",
     "@tauri-apps/plugin-dialog": "^2.7.3",
     "@types/three": "^0.186.0",
