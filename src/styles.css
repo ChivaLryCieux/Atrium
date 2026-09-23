@@ -4942,3 +4942,26 @@ body.resizing-row * {
   background: var(--bg-pill-hover);
   color: var(--text-primary);
 }
+
+/* ==========================================================================
+   Settings · shortcut cheat-sheet
+   ========================================================================== */
+.shortcut-kbd {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: var(--bg-pill);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xs);
+  padding: 2px 7px;
+  white-space: nowrap;
+}
+
+.shortcut-or {
+  margin: 0 4px;
+  font-size: 11px;
+  color: var(--text-placeholder);
+}

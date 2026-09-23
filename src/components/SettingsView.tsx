@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { AppSettings, AiProfile, ProviderModel, TokenMetrics } from "../types/chat";
 import { AppDialog, AppDialogRequest } from "./AppDialog";
 import { default as i18n, normalizeLocale, setAppLocale, type AppLocale } from "../locales";
+import { COMMANDS, formatShortcut, type CommandGroup } from "../commands/registry";
 import { THEMES, normalizeThemeMode, type ThemeMode } from "../themes";
 import {
   API_PROTOCOLS,
@@ -13,7 +14,7 @@ import {
   type ApiProtocol,
 } from "../providers/protocols";
 
-type SettingsTab = "general" | "appearance" | "model" | "tokens";
+type SettingsTab = "general" | "appearance" | "model" | "tokens" | "shortcuts";
 
 type SettingsViewProps = {
   onBack: () => void;
@@ -66,6 +67,14 @@ export function SettingsView({
 
   const themeMode = normalizeThemeMode(settings.themeMode);
   const fontSize = settings.fontSize ?? "14px";
+
+  // Shortcut cheat-sheet groups (labels resolved here so the i18n checker
+  // sees literal keys; unknown groups simply render no entries).
+  const shortcutGroups: { id: CommandGroup; label: string }[] = [
+    { id: "session", label: t("settings.shortcutsGroupSession") },
+    { id: "view", label: t("settings.shortcutsGroupView") },
+    { id: "app", label: t("settings.shortcutsGroupApp") },
+  ];
 
   useEffect(() => {
     if (activeTab === "tokens") {
@@ -277,6 +286,21 @@ export function SettingsView({
               </svg>
             </span>
             <span>{t("settings.tokenStats")}</span>
+          </button>
+
+          {/* 5. 快捷键 */}
+          <button
+            type="button"
+            className={`settings-menu-item ${activeTab === "shortcuts" ? "active" : ""}`}
+            onClick={() => setActiveTab("shortcuts")}
+          >
+            <span className="menu-icon">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="2" y="6" width="20" height="12" rx="2" />
+                <path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8" strokeLinecap="round" />
+              </svg>
+            </span>
+            <span>{t("settings.shortcutsTab")}</span>
           </button>
         </nav>
       </aside>
@@ -767,6 +791,70 @@ export function SettingsView({
                 )}
               </div>
             </div>
+          </div>
+        )}
+
+        {/* ========================================================= */}
+        {/* TAB 5: 快捷键速查                                          */}
+        {/* ========================================================= */}
+        {activeTab === "shortcuts" && (
+          <div className="settings-tab-pane">
+            <div className="pane-header">
+              <h2 className="pane-title">{t("settings.shortcutsTitle")}</h2>
+              <p className="pane-subtitle">{t("settings.shortcutsSubtitle")}</p>
+            </div>
+
+            <div className="settings-card">
+              <div className="setting-row">
+                <div className="setting-label-col">
+                  <span className="setting-title">{t("settings.shortcutsPaletteTitle")}</span>
+                  <span className="setting-desc">{t("settings.shortcutsPaletteDesc")}</span>
+                </div>
+                <div className="setting-control-col">
+                  <kbd className="shortcut-kbd">Ctrl+K</kbd>
+                  <span className="shortcut-or">/</span>
+                  <kbd className="shortcut-kbd">Ctrl+Shift+P</kbd>
+                </div>
+              </div>
+
+              <div className="setting-row">
+                <div className="setting-label-col">
+                  <span className="setting-title">{t("settings.shortcutsComposerTitle")}</span>
+                  <span className="setting-desc">{t("settings.shortcutsComposerDesc")}</span>
+                </div>
+                <div className="setting-control-col">
+                  <kbd className="shortcut-kbd">Enter</kbd>
+                  <span className="shortcut-or">/</span>
+                  <kbd className="shortcut-kbd">Shift+Enter</kbd>
+                </div>
+              </div>
+            </div>
+
+            {shortcutGroups.map((group) => {
+              const entries = COMMANDS.filter((cmd) => cmd.group === group.id);
+              if (entries.length === 0) return null;
+              return (
+                <div className="settings-card" key={group.id} style={{ marginTop: "20px" }}>
+                  <div className="list-section-header" style={{ marginBottom: "8px" }}>
+                    {group.label}
+                  </div>
+                  {entries.map((cmd) => (
+                    <div className="setting-row" key={cmd.id}>
+                      <div className="setting-label-col">
+                        <span className="setting-title">{t(cmd.titleKey)}</span>
+                      </div>
+                      <div className="setting-control-col">
+                        {cmd.shortcut ? (
+                          <kbd className="shortcut-kbd">{formatShortcut(cmd.shortcut)}</kbd>
+                        ) : (
+                          <span className="setting-desc">{t("settings.shortcutsNoBinding")}</span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
           </div>
         )}
       </main>

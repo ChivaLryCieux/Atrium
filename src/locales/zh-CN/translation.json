@@ -267,7 +267,18 @@
     "colStatus": "状态",
     "ready": "就绪",
     "noRecords": "暂无模型调度记录",
-    "addProviderFailed": "添加供应商失败:"
+    "addProviderFailed": "添加供应商失败:",
+    "shortcutsTab": "快捷键",
+    "shortcutsTitle": "键盘快捷键",
+    "shortcutsSubtitle": "全局快捷键速查；全部可用命令也可经命令面板（Ctrl+K）检索执行。",
+    "shortcutsGroupSession": "会话",
+    "shortcutsGroupView": "视图",
+    "shortcutsGroupApp": "应用",
+    "shortcutsPaletteTitle": "命令面板",
+    "shortcutsPaletteDesc": "检索并执行命令、跳转会话与项目",
+    "shortcutsComposerTitle": "输入框",
+    "shortcutsComposerDesc": "发送消息与插入换行",
+    "shortcutsNoBinding": "未绑定"
   },
   "app": {
     "errorFallback": "应用遇到了问题，请刷新页面重试",

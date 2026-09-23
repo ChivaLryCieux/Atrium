@@ -267,7 +267,18 @@
     "colStatus": "Status",
     "ready": "Ready",
     "noRecords": "No dispatch records yet",
-    "addProviderFailed": "Failed to add provider:"
+    "addProviderFailed": "Failed to add provider:",
+    "shortcutsTab": "Shortcuts",
+    "shortcutsTitle": "Keyboard Shortcuts",
+    "shortcutsSubtitle": "Global shortcut reference; every command is also searchable in the palette (Ctrl+K).",
+    "shortcutsGroupSession": "Session",
+    "shortcutsGroupView": "View",
+    "shortcutsGroupApp": "Application",
+    "shortcutsPaletteTitle": "Command Palette",
+    "shortcutsPaletteDesc": "Search commands, jump to tasks and projects",
+    "shortcutsComposerTitle": "Composer",
+    "shortcutsComposerDesc": "Send a message and insert line breaks",
+    "shortcutsNoBinding": "Unbound"
   },
   "app": {
     "errorFallback": "Something went wrong. Please refresh and retry.",
