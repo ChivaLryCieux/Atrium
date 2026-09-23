@@ -32,10 +32,8 @@ import { usePanelLayout } from "./hooks/usePanelLayout";
 import { buildCommandActions, useAvailableCommands } from "./hooks/useCommandActions";
 import { dshClient } from "./services/dshClient";
 import { applyTheme, normalizeThemeMode } from "./themes";
-import type { ThemeMode } from "./themes";
 import { useTranslation } from "react-i18next";
-import i18n, { setAppLocale } from "./locales";
-import { COMMANDS, matchesShortcut } from "./commands/registry";
+import { matchesShortcut } from "./commands/registry";
 
 // ── Heavy / rarely-visible panels: lazy-split so three/ogl/xterm/md ──
 // ── stay out of the initial bundle (paired with manualChunks).     ──
