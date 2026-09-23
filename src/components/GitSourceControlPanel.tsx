@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
-import { GitCommit, GitFileStatus, GitRepoInfo, GitRepoStatus } from "../types/git";
+import { GitCommit, GitFileStatus, GitRepoInfo, GitRepoSnapshot, GitRepoStatus } from "../types/git";
 import { Project } from "../types/chat";
 
 type GitSourceControlPanelProps = {
@@ -55,35 +55,33 @@ export function GitSourceControlPanel({
     );
   }, [project, workspacePath]);
 
-  // Load repositories in current project directory
+  // Load repositories in current project directory.
+  // `git_detect_repos_with_status` returns each repo together with its
+  // working-tree status, so opening the panel is one invoke instead of a
+  // detect + per-repo status loop.
   const loadRepos = async () => {
     if (!projectDirectory) return;
     try {
-      const detected = await invoke<GitRepoInfo[]>("git_detect_repos", {
+      const detected = await invoke<GitRepoSnapshot[]>("git_detect_repos_with_status", {
         projectPath: projectDirectory,
       });
 
-      const initializedRepos: RepoState[] = detected.map((info) => ({
-        info,
-        status: null,
+      const initializedRepos: RepoState[] = detected.map((snapshot) => ({
+        info: snapshot.info,
+        status: snapshot.status,
         expanded: true,
         isCommitting: false,
         isPushing: false,
         isPulling: false,
-        error: null,
+        error: snapshot.error ?? null,
       }));
 
       setRepos(initializedRepos);
 
       if (detected.length > 0) {
-        if (!selectedGraphRepoPath || !detected.some((r) => r.path === selectedGraphRepoPath)) {
-          setSelectedGraphRepoPath(detected[0].path);
+        if (!selectedGraphRepoPath || !detected.some((r) => r.info.path === selectedGraphRepoPath)) {
+          setSelectedGraphRepoPath(detected[0].info.path);
         }
-      }
-
-      // Fetch statuses for each repo
-      for (const repo of detected) {
-        loadRepoStatus(repo.path);
       }
     } catch (err) {
       console.error("Failed to detect git repos:", err);

@@ -33,3 +33,14 @@ export type GitCommit = {
   refs: string[];
   isHead: boolean;
 };
+
+/**
+ * One detected repository plus its working-tree status, returned by
+ * `git_detect_repos_with_status` (detect + status in a single invoke).
+ * `status` is null when that repo could not be read; `error` carries why.
+ */
+export type GitRepoSnapshot = {
+  info: GitRepoInfo;
+  status: GitRepoStatus | null;
+  error?: string | null;
+};

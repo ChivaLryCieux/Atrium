@@ -479,6 +479,14 @@ pub fn git_detect_repos(project_path: String) -> Result<Vec<crate::git::GitRepoI
     crate::git::detect_repos(&project_path)
 }
 
+/// Detect repos + read each working-tree status in one call (1+N → 1 invoke).
+#[tauri::command]
+pub fn git_detect_repos_with_status(
+    project_path: String,
+) -> Result<Vec<crate::git::GitRepoSnapshot>, String> {
+    crate::git::detect_repos_with_status(&project_path)
+}
+
 #[tauri::command]
 pub fn git_get_status(repo_path: String) -> Result<crate::git::GitRepoStatus, String> {
     crate::git::get_repo_status(&repo_path)

@@ -83,6 +83,7 @@ pub fn run() {
             commands::close_terminal,
             commands::git_init,
             commands::git_detect_repos,
+            commands::git_detect_repos_with_status,
             commands::git_get_status,
             commands::git_stage_file,
             commands::git_unstage_file,

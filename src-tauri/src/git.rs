@@ -232,6 +232,43 @@ pub fn get_repo_status(repo_path: &str) -> Result<GitRepoStatus, String> {
     })
 }
 
+/// One scan result per detected repository. `status` stays `None` when the
+/// repo could not be read (e.g. git missing) and `error` carries the reason,
+/// so a single unreadable repo never fails the whole panel load.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitRepoSnapshot {
+    pub info: GitRepoInfo,
+    pub status: Option<GitRepoStatus>,
+    pub error: Option<String>,
+}
+
+/// Detect repositories under a project directory *with* their working-tree
+/// status in one call. Replaces the frontend's detect-then-N×status loop
+/// (1 + N invokes → 1).
+pub fn detect_repos_with_status(project_path: &str) -> Result<Vec<GitRepoSnapshot>, String> {
+    let repos = detect_repos(project_path)?;
+    let snapshots = repos
+        .into_iter()
+        .map(|info| {
+            let path = info.path.clone();
+            match get_repo_status(&path) {
+                Ok(status) => GitRepoSnapshot {
+                    info,
+                    status: Some(status),
+                    error: None,
+                },
+                Err(err) => GitRepoSnapshot {
+                    info,
+                    status: None,
+                    error: Some(err),
+                },
+            }
+        })
+        .collect();
+    Ok(snapshots)
+}
+
 pub fn stage_file(repo_path: &str, file_path: &str) -> Result<(), String> {
     run_git(Path::new(repo_path), &["add", "--", file_path])?;
     Ok(())
