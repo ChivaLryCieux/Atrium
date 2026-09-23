@@ -4121,6 +4121,22 @@ body.resizing-row * {
   font-size: 11.5px;
   font-weight: 600;
   color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.12s, color 0.12s;
+}
+
+.tool-call-terminal-banner:hover {
+  background: var(--bg-pill-hover);
+  color: var(--text-primary);
+}
+
+.tool-list-chevron {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-muted);
+  flex-shrink: 0;
 }
 
 .tool-call-list {

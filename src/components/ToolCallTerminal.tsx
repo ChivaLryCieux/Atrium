@@ -8,16 +8,43 @@ interface ToolCallTerminalProps {
 
 export const ToolCallTerminal: React.FC<ToolCallTerminalProps> = ({ toolCalls }) => {
   const { t } = useTranslation();
+  // 列表级收纳状态。hooks 必须早于空数据豁免，故置于 return null 之前。
+  const [manualListOverride, setManualListOverride] = useState<boolean | null>(null);
+
+  const hasRunning = (toolCalls ?? []).some((c) => c.status === "running");
+
+  // 轮次重新开工（running 状态复现）时收回手动覆盖，让列表跟随自动规则。
+  React.useEffect(() => {
+    if (hasRunning) {
+      setManualListOverride(null);
+    }
+  }, [hasRunning]);
 
   if (!toolCalls || toolCalls.length === 0) {
     return null;
   }
 
-  const hasRunning = toolCalls.some((c) => c.status === "running");
+  // 自动规则：执行中展开（配合「跟随活跃调用」实时呈现细节），
+  // 全部结束后收纳——从历史加载的消息挂起即已是终态，默认也是收纳的。
+  const listExpanded = manualListOverride ?? hasRunning;
+  const toggleList = () => setManualListOverride((prev) => !(prev ?? hasRunning));
 
   return (
     <div className="tool-call-terminal-container">
-      <div className="tool-call-terminal-banner">
+      <div
+        className="tool-call-terminal-banner"
+        role="button"
+        tabIndex={0}
+        aria-expanded={listExpanded}
+        title={listExpanded ? t("tool.collapse") : t("tool.expand")}
+        onClick={toggleList}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            toggleList();
+          }
+        }}
+      >
         <svg
           width="13"
           height="13"
@@ -38,17 +65,35 @@ export const ToolCallTerminal: React.FC<ToolCallTerminalProps> = ({ toolCalls })
             <span className="tool-status-text">{t("tool.running")}</span>
           </span>
         )}
+        <span className="tool-list-chevron">
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            style={{
+              transform: listExpanded ? "rotate(180deg)" : "rotate(0deg)",
+              transition: "transform 0.2s ease",
+            }}
+          >
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </span>
       </div>
 
-      <div className="tool-call-list">
-        {toolCalls.map((call, idx) => (
-          <ToolCallCard
-            key={call.id || `tool-${idx}`}
-            item={call}
-            autoExpanded={hasRunning && idx === toolCalls.length - 1}
-          />
-        ))}
-      </div>
+      {listExpanded && (
+        <div className="tool-call-list">
+          {toolCalls.map((call, idx) => (
+            <ToolCallCard
+              key={call.id || `tool-${idx}`}
+              item={call}
+              autoExpanded={hasRunning && idx === toolCalls.length - 1}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 };
