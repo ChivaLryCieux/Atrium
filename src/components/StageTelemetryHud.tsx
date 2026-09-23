@@ -119,6 +119,12 @@ export interface StageTelemetryHudProps {
   selectedModel: string;
   activeProfile: AiProfile | null;
   isStreaming?: boolean;
+  /**
+   * Conversation identity (active session id). The token counter is a
+   * per-conversation monotonic high-water mark: it may only rise while the
+   * same task is open, and resets when the operator switches task/session.
+   */
+  sessionKey?: string | null;
 }
 
 export const StageTelemetryHud: React.FC<StageTelemetryHudProps> = ({
@@ -126,13 +132,14 @@ export const StageTelemetryHud: React.FC<StageTelemetryHudProps> = ({
   selectedModel,
   activeProfile,
   isStreaming = false,
+  sessionKey = null,
 }) => {
   const { t } = useTranslation();
 
   // Calculate total cumulative tokens used across the entire task in real-time.
   // Prioritize exact tokens returned by the API/kernel (promptTokens + completionTokens),
   // falling back to text estimation only when API token metrics are not yet recorded.
-  const tokensUsed = useMemo(() => {
+  const rawTokensUsed = useMemo(() => {
     let total = 0;
     for (const msg of messages) {
       if (msg.role === "user") {
@@ -160,6 +167,33 @@ export const StageTelemetryHud: React.FC<StageTelemetryHudProps> = ({
     }
     return Math.max(total, 1);
   }, [messages, t]);
+
+  // ── 词元计数器单调性保护 ──────────────────────────────────────
+  // rawTokensUsed 是纯派生值：同一条消息的计量口径会随生命周期切换
+  // （流式中按正文估值 → token-usage 事件覆盖为内核精确值 → 结算时
+  // 由回复载荷再次覆盖），任何一种切换让数值变小时总数都会回落。
+  // 计数器语义是「本任务累计消耗，只增不减」，因此按会话维持一个
+  // 高水位：raw 低于水位时展示水位；切换会话（新任务/切换会话）
+  // 时水位重置为该会话自身的累计值。
+  const [tokenFloor, setTokenFloor] = useState<{ key: string | null; value: number }>({
+    key: sessionKey ?? null,
+    value: 0,
+  });
+  const floorKey = sessionKey ?? null;
+  let tokensUsed: number;
+  if (tokenFloor.key !== floorKey) {
+    // 会话切换：以新会话当前累计值为起点重新建立水位。
+    const next = { key: floorKey, value: rawTokensUsed };
+    setTokenFloor(next);
+    tokensUsed = rawTokensUsed;
+  } else if (rawTokensUsed > tokenFloor.value) {
+    const next = { key: floorKey, value: rawTokensUsed };
+    setTokenFloor(next);
+    tokensUsed = rawTokensUsed;
+  } else {
+    tokensUsed = tokenFloor.value;
+  }
+  tokensUsed = Math.max(tokensUsed, 1);
 
   const ceiling = useMemo(
     () => resolveContextCeiling(selectedModel, activeProfile),

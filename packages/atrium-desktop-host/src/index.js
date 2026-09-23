@@ -322,10 +322,19 @@ function handleNotification(route, notification, state, sseWrite) {
     } else if (event?.type === 'assistant/message' || event?.type === 'assistant/attempt') {
       const usage = event.data?.usage
       if (usage && typeof usage === 'object') {
+        // 词元计数只增不减：一次运行内 attempt / 子步骤通知可能乱序到达
+        // （重放的 attempt 早于最终 message，或多步工具循环中间步骤的
+        // usage 小于后续步骤），直接取最后一条会让 /v1/turn 结算载荷与
+        // 前端计数器回退。按 (conversationId, stageId) 路线内各字段取高水位。
+        const prev = state.usage
+        const nextInput = Math.max(prev?.inputTokens ?? 0, Number(usage.inputTokens ?? 0))
+        const nextOutput = Math.max(prev?.outputTokens ?? 0, Number(usage.outputTokens ?? 0))
         state.usage = {
-          inputTokens: Number(usage.inputTokens ?? 0),
-          outputTokens: Number(usage.outputTokens ?? 0),
-          ...(usage.totalTokens === undefined ? {} : { totalTokens: Number(usage.totalTokens) }),
+          inputTokens: nextInput,
+          outputTokens: nextOutput,
+          ...(usage.totalTokens === undefined && prev?.totalTokens === undefined
+            ? {}
+            : { totalTokens: Math.max(prev?.totalTokens ?? 0, Number(usage.totalTokens ?? 0)) }),
         }
         _emit({
           type: 'token-usage',

@@ -295,16 +295,20 @@ export function App() {
     // Real-time token usage telemetry from kernel
     const unlistenTokenUsage = dshClient.onTokenUsage((msg) => {
       if (isSendingRef.current) return;
+      const usage = msg.usage;
+      if (!usage) return;
       const active = activeSessionIdRef.current;
       if (msg.conversationId && active && !msg.conversationId.startsWith(active)) return;
       setMessages((prev) =>
         prev.map((m) => {
           const matches = msg.stageId ? m.id === msg.stageId : m.pending && m.role === "assistant";
           if (!matches) return m;
+          // 词元计量只增不减：内核的 attempt/重试或子步骤通知可能乱序到达
+          // 且用量更小，直接覆写会让计数器回落。按字段取高水位。
           return {
             ...m,
-            promptTokens: msg.usage.inputTokens,
-            completionTokens: msg.usage.outputTokens,
+            promptTokens: Math.max(m.promptTokens ?? 0, usage.inputTokens),
+            completionTokens: Math.max(m.completionTokens ?? 0, usage.outputTokens),
           };
         })
       );
@@ -735,10 +739,11 @@ export function App() {
             prev.map((m) => {
               const matches = stageId ? m.id === stageId : m.pending && m.role === "assistant";
               if (!matches) return m;
+              // 同 WS 监听：乱序的小额用量通知不得让计量回落。
               return {
                 ...m,
-                promptTokens: usage.inputTokens,
-                completionTokens: usage.outputTokens,
+                promptTokens: Math.max(m.promptTokens ?? 0, usage.inputTokens),
+                completionTokens: Math.max(m.completionTokens ?? 0, usage.outputTokens),
               };
             })
           );
@@ -787,8 +792,12 @@ export function App() {
             reply.toolCalls && reply.toolCalls.length > 0
               ? reply.toolCalls
               : pending?.toolCalls ?? null;
-          const promptTokens = reply.promptTokens ?? pending?.promptTokens ?? null;
-          const completionTokens = reply.completionTokens ?? pending?.completionTokens ?? null;
+          // 结算合并同样走高水位：回复载荷若缺失/小于流式期间已记录的
+          // 内核精确值，保留较大者，避免「落定瞬间数字回落」。
+          const promptTokens =
+            Math.max(reply.promptTokens ?? 0, pending?.promptTokens ?? 0) || null;
+          const completionTokens =
+            Math.max(reply.completionTokens ?? 0, pending?.completionTokens ?? 0) || null;
           const reasoningContent = reply.reasoningContent || pending?.reasoningContent || null;
           return {
             ...reply,
@@ -1030,6 +1039,7 @@ export function App() {
                 selectedModel={selectedModel}
                 activeProfile={activeProfile}
                 isStreaming={isSending}
+                sessionKey={activeSessionId}
               />
               {messages.length === 0 ? (
                 /* Home / Greeting Stage */

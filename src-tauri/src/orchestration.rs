@@ -617,12 +617,19 @@ async fn execute_dag_kernel(
                 let latency = start_time.elapsed().as_millis() as u64;
                 record_turn_usage(app, stage.profile.model.trim(), &request.prompt, &turn, latency, project);
 
+                // NOTE: use get_input_tokens()/get_output_tokens() (which also
+                // read the nested `usage` object the bridge's SSE `done`
+                // payload actually carries) instead of the flat fields —
+                // reading the flat ones alone silently drops exact kernel
+                // usage here while record_turn_usage() keeps it, leaving the
+                // reply on estimates and making the settled tokens disagree
+                // with what was streamed to the UI.
                 let prompt_tokens = turn
-                    .input_tokens
+                    .get_input_tokens()
                     .map(|n| n as usize)
                     .unwrap_or_else(|| crate::tokens::estimate_tokens(&request.prompt));
                 let completion_tokens = turn
-                    .output_tokens
+                    .get_output_tokens()
                     .map(|n| n as usize)
                     .unwrap_or_else(|| crate::tokens::estimate_tokens(&turn.final_response));
                 let reply = ChatMessage {
@@ -800,7 +807,10 @@ async fn execute_single_direct(
 
     let api_messages = to_api_messages(base_messages, Some(&seeded));
     let start_time = std::time::Instant::now();
-    let message_id = Uuid::new_v4().to_string();
+    // Must equal the frontend single-mode pending id (`<profileId>-single`),
+    // otherwise settlement replaces the bubble by a stranger id and the
+    // merge drops the pending node (and any tokens streamed into it).
+    let message_id = format!("{}-single", profile.id);
     match send_chat(http, &seeded, &api_messages).await {
         Ok(response) => {
             let latency = start_time.elapsed().as_millis() as u64;
@@ -1059,7 +1069,8 @@ async fn execute_parallel_kernel(
 
     results
         .into_iter()
-        .map(|(profile, prompt, start_time, result)| {
+        .enumerate()
+        .map(|(index, (profile, prompt, start_time, result))| {
             let latency = start_time.elapsed().as_millis() as u64;
             match result {
                 Ok(turn) => {
@@ -1073,7 +1084,11 @@ async fn execute_parallel_kernel(
                         .map(|n| n as usize)
                         .unwrap_or_else(|| crate::tokens::estimate_tokens(&turn.final_response));
                     ChatMessage {
-                        id: Uuid::new_v4().to_string(),
+                        // Must equal the stage id sent to the bridge (and the
+                        // frontend pending id) so streamed deltas/tokens and
+                        // the settled reply land on the same node; a random
+                        // UUID here would orphan the pending bubble at merge.
+                        id: format!("{}-{}", profile.id, index),
                         role: "assistant".to_string(),
                         content: turn.final_response,
                         speaker_id: Some(profile.id.clone()),
@@ -1090,7 +1105,7 @@ async fn execute_parallel_kernel(
                     }
                 }
                 Err(err) => ChatMessage {
-                    id: Uuid::new_v4().to_string(),
+                    id: format!("{}-{}", profile.id, index),
                     role: "assistant".to_string(),
                     content: err,
                     speaker_id: Some(profile.id.clone()),
@@ -1124,7 +1139,11 @@ async fn execute_dag(
     let mut completed_replies: Vec<ChatMessage> = Vec::new();
 
     for stage in &stages {
-        let message_id = Uuid::new_v4().to_string();
+        // Reply id must equal the frontend pending bubble id (`build_stages`
+        // formula `<profileId>-<index>`): the settlement merge matches replies
+        // to pending bubbles by id and drops unmatched pendings, which would
+        // discard tokens already streamed into them.
+        let message_id = stage.id.clone();
 
         // Emit "running" progress
         let _ = app.emit(
@@ -1282,8 +1301,11 @@ async fn execute_parallel(
 
     results
         .into_iter()
-        .map(|(profile, result)| {
-            let message_id = Uuid::new_v4().to_string();
+        .enumerate()
+        .map(|(index, (profile, result))| {
+            // Align with the frontend pending bubble id (`build_stages`
+            // formula) so settlement merges instead of dropping pendings.
+            let message_id = format!("{}-{}", profile.id, index);
             match result {
                 Ok(response) => {
                     let prompt_tokens = crate::tokens::estimate_tokens(&profile.system_prompt)
