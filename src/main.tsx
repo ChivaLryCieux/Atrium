@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { useTranslation } from "react-i18next";
 import { App } from "./App";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { ToastProvider } from "./components/Toast";
 import "./locales";
 import "./styles.css";
 
@@ -10,7 +11,9 @@ function LocalizedRoot() {
   const { t } = useTranslation();
   return (
     <ErrorBoundary fallback={<div className="error-boundary">{t("app.errorFallback")}</div>}>
-      <App />
+      <ToastProvider>
+        <App />
+      </ToastProvider>
     </ErrorBoundary>
   );
 }

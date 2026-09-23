@@ -17,6 +17,7 @@ import Grainient from "./components/Grainient";
 import { StageTelemetryHud } from "./components/StageTelemetryHud";
 import { ToolCallTerminal } from "./components/ToolCallTerminal";
 import { ReasoningAccordion } from "./components/ReasoningAccordion";
+import { useToast } from "./components/Toast";
 import { createUserMessage } from "./constants/defaults";
 import {
   AiProfile,
@@ -43,6 +44,7 @@ import { CommandPalette } from "./components/CommandPalette";
 
 export function App() {
   const { t } = useTranslation();
+  const { showToast } = useToast();
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [pendingMessages, setPendingMessages] = useState<PendingMessage[]>([]);
@@ -897,6 +899,16 @@ export function App() {
     handleTerminalClosed(id);
   };
 
+  // ── Copy a settled message to the clipboard (toast feedback) ──
+  const copyMessage = async (content: string) => {
+    try {
+      await navigator.clipboard.writeText(content);
+      showToast(t("app.messageCopied"), "success");
+    } catch {
+      showToast(t("app.messageCopyFailed"), "danger");
+    }
+  };
+
   // ── Tasks list for sidebar from native sessions ──────────────
   const sidebarTasks: TaskSummary[] = useMemo(() => {
     return sessions.map((s) => ({
@@ -1122,6 +1134,17 @@ export function App() {
                       msg.role === "user" ? (
                         <div key={msg.id} className="message-bubble-row user">
                           <div className="bubble-body user-bubble">
+                            <button
+                              type="button"
+                              className="bubble-copy-btn"
+                              title={t("app.copyMessage")}
+                              onClick={() => void copyMessage(msg.content)}
+                            >
+                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <rect x="9" y="9" width="12" height="12" rx="2" />
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                              </svg>
+                            </button>
                             <div className="bubble-text">{msg.content}</div>
                           </div>
                           <div
@@ -1167,6 +1190,19 @@ export function App() {
                                 !msg.content.includes(t("app.stageAnalyzing")) &&
                                 !(msg.content.startsWith("[") && msg.content.includes("]")))) && (
                               <div className="bubble-text"><Markdown text={msg.content} /></div>
+                            )}
+                            {!msg.pending && (
+                              <button
+                                type="button"
+                                className="bubble-copy-btn"
+                                title={t("app.copyMessage")}
+                                onClick={() => void copyMessage(msg.content)}
+                              >
+                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <rect x="9" y="9" width="12" height="12" rx="2" />
+                                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                                </svg>
+                              </button>
                             )}
                           </div>
                         </div>

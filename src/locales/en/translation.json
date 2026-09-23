@@ -276,7 +276,10 @@
     "me": "Me",
     "loadSessionFailed": "Failed to load session:",
     "deleteSessionFailed": "Failed to delete session:",
-    "createSessionFailed": "Failed to create session:"
+    "createSessionFailed": "Failed to create session:",
+    "copyMessage": "Copy message",
+    "messageCopied": "Copied to clipboard",
+    "messageCopyFailed": "Copy failed"
   },
   "git": {
     "title": "Source Control",

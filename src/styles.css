@@ -4744,3 +4744,145 @@ body.resizing-row * {
 .palette-footer .palette-kbd + .palette-kbd {
   margin-left: 2px;
 }
+
+/* ==========================================================================
+   Toast (transient feedback)
+   ========================================================================== */
+.toast-host {
+  position: fixed;
+  bottom: 56px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.toast {
+  padding: 7px 14px;
+  border-radius: var(--radius-md);
+  background: var(--accent-black);
+  color: var(--accent-on-black, #ffffff);
+  font-size: 12.5px;
+  box-shadow: var(--shadow-modal);
+  animation: toastIn 0.18s ease-out;
+  max-width: 70vw;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.toast.success {
+  background: #16a34a;
+  color: #ffffff;
+}
+
+.toast.danger {
+  background: var(--accent-danger);
+  color: #ffffff;
+}
+
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ==========================================================================
+   Markdown code blocks (header strip + copy)
+   ========================================================================== */
+.md-body .code-block {
+  margin: 8px 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--bg-sidebar);
+}
+
+.code-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 3px 6px 3px 10px;
+  background: var(--bg-pill);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.code-block-lang {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+}
+
+.code-block-copy {
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-xs);
+  padding: 2px 7px;
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.code-block-copy:hover {
+  background: var(--bg-pill-hover);
+  color: var(--text-primary);
+}
+
+/* The wrapper owns the frame; the bare <pre> inside stays flush. */
+.md-body .code-block pre {
+  margin: 0;
+  border: none;
+  border-radius: 0;
+}
+
+/* ==========================================================================
+   Message copy action (hover affordance on bubbles)
+   ========================================================================== */
+.bubble-copy-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: var(--radius-xs);
+  background: var(--bg-pill);
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.12s, color 0.12s;
+  z-index: 3;
+}
+
+.user-bubble .bubble-copy-btn {
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.message-bubble-row:hover .bubble-copy-btn,
+.bubble-copy-btn:focus-visible {
+  opacity: 1;
+}
+
+.bubble-copy-btn:hover {
+  background: var(--bg-pill-hover);
+  color: var(--text-primary);
+}
+
+/* Keep bubble text clear of the hover button's corner */
+.user-bubble .bubble-text {
+  padding-right: 20px;
+}

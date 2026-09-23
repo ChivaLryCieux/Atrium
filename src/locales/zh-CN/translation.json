@@ -276,7 +276,10 @@
     "me": "我",
     "loadSessionFailed": "加载会话失败:",
     "deleteSessionFailed": "删除会话失败:",
-    "createSessionFailed": "无法创建新会话:"
+    "createSessionFailed": "无法创建新会话:",
+    "copyMessage": "复制消息",
+    "messageCopied": "已复制到剪贴板",
+    "messageCopyFailed": "复制失败"
   },
   "git": {
     "title": "源码管理",
