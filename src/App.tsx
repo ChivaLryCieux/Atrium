@@ -1,6 +1,5 @@
 import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import { TopBar } from "./components/TopBar";
 import { Sidebar, TaskSummary } from "./components/Sidebar";
 import { CenterHome } from "./components/CenterHome";
@@ -10,24 +9,16 @@ import { PanelResizer } from "./components/PanelResizer";
 import { StageTelemetryHud } from "./components/StageTelemetryHud";
 import { MessageStream } from "./components/MessageStream";
 import { useToast } from "./components/Toast";
-import { createUserMessage } from "./constants/defaults";
 import {
-  AiProfile,
   AppSettings,
   ChatMessage,
   ExecutionMode,
-  OrchestrationProgressEvent,
-  OrchestrationStage,
-  PendingMessage,
   Project,
   ReasoningEffort,
   SessionSummary,
   Soul,
 } from "./types/chat";
-import { createPendingMessages } from "./utils/messages";
 import { generateDefaultTaskTitle } from "./utils/tasks";
-import { mergeTokenHighWaterMark } from "./utils/tokens";
-import { loadDraft, saveDraft } from "./utils/drafts";
 import { usePanelLayout } from "./hooks/usePanelLayout";
 import { buildCommandActions, useAvailableCommands } from "./hooks/useCommandActions";
 import { useAppBootstrap } from "./hooks/useAppBootstrap";
@@ -62,7 +53,6 @@ export function App() {
   const { showToast } = useToast();
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [pendingMessages, setPendingMessages] = useState<PendingMessage[]>([]);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
