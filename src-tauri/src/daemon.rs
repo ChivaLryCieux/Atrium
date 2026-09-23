@@ -109,6 +109,11 @@ pub struct DshDaemon {
     /// separate from `connection.status`: a reachable bridge whose kernel
     /// failed to load must route turns to the direct API fallback.
     kernel_ready: bool,
+    /// Set when {@link ensure_running} respawned the bridge. A fresh bridge
+    /// holds fresh kernel runtimes, so any state the Rust side seeded into
+    /// the old runtime (persona injections) must be re-seeded — the caller
+    /// consumes this flag and drops its caches.
+    reseed_required: bool,
     #[cfg(target_os = "windows")]
     job: Option<job::JobGuard>,
 }
@@ -228,6 +233,7 @@ impl DshDaemon {
             connection: HarnessConnection::default(),
             child: None,
             kernel_ready: false,
+            reseed_required: false,
             #[cfg(target_os = "windows")]
             job: None,
         }
@@ -357,6 +363,56 @@ impl DshDaemon {
         self.connection = conn.clone();
         self.child = Some(child);
         Ok(conn)
+    }
+
+    /// Guarantee the bridge child is alive before a turn is routed through
+    /// it. `start()` short-circuits while `status == "ready"` with a child
+    /// handle — correct for the common case, but wrong after the bridge
+    /// died post-startup (crash, OOM, external kill), where `kernel_ready`
+    /// stays stale-true and every turn fails until the app is restarted.
+    /// Reaping the dead handle first lets `start()` spawn a fresh bridge.
+    ///
+    /// An adopted external bridge (hot reload — no owned child) is trusted:
+    /// respawning it would fight the owning instance.
+    pub async fn ensure_running(
+        &mut self,
+        http: &reqwest::Client,
+        app: &tauri::AppHandle,
+    ) -> Result<HarnessConnection, String> {
+        // An explicitly stopped daemon stays stopped until start() is
+        // called again — a turn must not resurrect it.
+        if self.connection.status == "stopped" {
+            return Ok(self.connection.clone());
+        }
+        if self.child_alive() {
+            return Ok(self.connection.clone());
+        }
+        debug_log("ensure_running: bridge child gone — respawning");
+        self.terminate_child();
+        self.connection.status = "standby".to_string();
+        self.connection.pid = None;
+        self.kernel_ready = false;
+        let result = self.start(http, app).await;
+        if result.is_ok() {
+            self.reseed_required = true;
+        }
+        result
+    }
+
+    /// Whether the bridge process backing the current connection is alive.
+    fn child_alive(&mut self) -> bool {
+        match self.child.as_mut() {
+            Some(child) => matches!(child.try_wait(), Ok(None)),
+            None => self.connection.status == "ready",
+        }
+    }
+
+    /// Whether the bridge was respawned since the last check. The caller
+    /// (orchestration) drops per-conversation caches that were seeded into
+    /// the dead runtime — e.g. the persona/route fingerprint, which a fresh
+    /// bridge no longer holds.
+    pub fn take_reseed_required(&mut self) -> bool {
+        std::mem::take(&mut self.reseed_required)
     }
 
     /// Translate a health-probe outcome into the connection state.

@@ -54,6 +54,17 @@ fn single_route_cache() -> &'static Mutex<HashMap<String, String>> {
 /// and old entries are dropped opportunistically.
 const SINGLE_ROUTE_CACHE_CAP: usize = 512;
 
+/// Drop every remembered route fingerprint so the next turn re-injects the
+/// persona into a fresh kernel session. Used after a bridge respawn — the
+/// new runtime no longer holds what the old one was seeded with, and the
+/// route fingerprint itself is unchanged, so without this the persona would
+/// stay missing for the rest of the conversation.
+fn reset_single_route_cache() {
+    if let Some(cache) = SINGLE_ROUTE_CACHE.get() {
+        cache.blocking_lock().clear();
+    }
+}
+
 // ─── Stage templates ───────────────────────────────────────────
 
 struct StageTemplate {
@@ -191,6 +202,18 @@ pub async fn execute(
         false
     } else {
         let mut guard = daemon.lock().await;
+        // Self-heal before routing: a bridge that died after startup
+        // (crash / OOM / external kill) leaves `kernel_ready` stale-true,
+        // which would POST every turn into a dead port until the app is
+        // restarted. `start()` alone cannot fix that — it short-circuits on
+        // status "ready" — so ensure_running reaps the dead child and
+        // respawns first.
+        let _ = guard.ensure_running(http, app).await;
+        if guard.take_reseed_required() {
+            // A fresh bridge holds fresh kernel runtimes; the persona /
+            // route fingerprint seeded into the dead one must be re-sent.
+            reset_single_route_cache();
+        }
         if !guard.kernel_available() {
             // One late start attempt: the frontend may not have finished
             // initializing the bridge when the first message arrives.

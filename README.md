@@ -61,7 +61,7 @@ Atrium 桌面工作台 (Desktop Host)
 │   └── DSH WebSocket 流式客户端 (dshClient.ts)
 │
 ├── 宿主层 (Rust + Tauri 2.0)
-│   ├── 内核桥接进程托管 (daemon.rs: spawn/探活/退出回收)
+│   ├── 内核桥接进程托管 (daemon.rs: spawn/探活/退出回收、崩溃自愈重拉)
 │   ├── 确定性编排拓扑服务 (orchestration.rs: 内核路由 + 直连兜底)
 │   ├── 原生系统遥测与 Explorer 集成 (commands.rs)
 │   └── 本地配置与状态持久化 (storage.rs)
@@ -100,7 +100,7 @@ Atrium/
 │   ├── atrium-desktop-host/            # @atrium/desktop-host：内核桥（HTTP + WS 桥面）
 │   └── atrium-core/                    # @atrium/core：Cordis Profile（profiles/atrium-desktop/）
 ├── src-tauri/                          # 宿主层（Rust + Tauri 2）
-│   ├── src/daemon.rs                   #   内核桥进程托管（Windows Job Object 进程树）
+│   ├── src/daemon.rs                   #   内核桥进程托管（Windows Job Object 进程树、死亡自愈重拉）
 │   ├── src/orchestration.rs            #   编排路由（内核优先 + 直连兜底）
 │   ├── src/terminal.rs                 #   PTY 终端管理（portable-pty）
 │   └── resources/                      #   打包暂存资源（bridge/node/kernel/cordis，gitignore）
