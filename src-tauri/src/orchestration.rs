@@ -284,6 +284,25 @@ impl KernelTurnResponse {
     }
 }
 
+/// Find the boundary of the next complete SSE message in a byte buffer.
+/// Matches either `\n\n` (len 2) or `\r\n\r\n` (len 4).
+/// In UTF-8, neither `\r` (0x0D) nor `\n` (0x0A) can ever appear as part of a
+/// multi-byte sequence, ensuring clean character and message boundaries.
+fn find_sse_boundary(buf: &[u8]) -> Option<(usize, usize)> {
+    if buf.len() < 2 {
+        return None;
+    }
+    for i in 0..buf.len() - 1 {
+        if buf[i] == b'\n' && buf[i + 1] == b'\n' {
+            return Some((i, 2));
+        }
+        if i + 3 < buf.len() && &buf[i..i + 4] == b"\r\n\r\n" {
+            return Some((i, 4));
+        }
+    }
+    None
+}
+
 async fn post_turn(
     app: &AppHandle,
     http: &Client,
@@ -327,9 +346,10 @@ async fn post_turn(
         return serde_json::from_str(&body).map_err(|e| format!("内核响应解析失败: {e}"));
     }
 
-    // Read SSE byte stream incrementally
+    // Read SSE byte stream incrementally into a byte buffer to protect against
+    // UTF-8 multi-byte characters split across chunk boundaries and avoid quadratic reallocations.
     let mut stream = response.bytes_stream();
-    let mut buffer = String::new();
+    let mut byte_buffer: Vec<u8> = Vec::with_capacity(16384);
     let mut final_turn: Option<KernelTurnResponse> = None;
     let mut accumulated_text = String::new();
     let mut accumulated_reasoning = String::new();
@@ -345,16 +365,12 @@ async fn post_turn(
             }
         };
 
-        let chunk_str = match std::str::from_utf8(&chunk) {
-            Ok(s) => s,
-            Err(_) => continue,
-        };
-        buffer.push_str(chunk_str);
+        byte_buffer.extend_from_slice(&chunk);
 
-        // Process complete SSE messages (delimited by \n\n)
-        while let Some(pos) = buffer.find("\n\n") {
-            let message = buffer[..pos].to_string();
-            buffer = buffer[pos + 2..].to_string();
+        // Process complete SSE messages (delimited by \n\n or \r\n\r\n)
+        while let Some((msg_end, delim_len)) = find_sse_boundary(&byte_buffer) {
+            let message_bytes = &byte_buffer[..msg_end];
+            let message = String::from_utf8_lossy(message_bytes);
 
             let mut current_event_type = String::new();
             let mut data_str = String::new();
@@ -365,6 +381,9 @@ async fn post_turn(
                     data_str = data_val.trim().to_string();
                 }
             }
+
+            // Efficiently shift buffer in-place
+            byte_buffer.drain(..msg_end + delim_len);
 
             if data_str.is_empty() {
                 continue;

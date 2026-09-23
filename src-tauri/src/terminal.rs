@@ -99,13 +99,61 @@ impl TerminalManager {
             .name(format!("atrium-pty-{id_out}"))
             .spawn(move || {
                 let mut buf = [0u8; 8192];
+                let mut carry = Vec::new();
                 loop {
                     match reader.read(&mut buf) {
-                        Ok(0) => break,
+                        Ok(0) => {
+                            if !carry.is_empty() {
+                                let data = String::from_utf8_lossy(&carry).to_string();
+                                let _ = app_out.emit("terminal-output", TerminalOutputEvent { id: id_out.clone(), data });
+                            }
+                            break;
+                        }
                         Ok(n) => {
-                            let data = String::from_utf8_lossy(&buf[..n]).to_string();
-                            if app_out.emit("terminal-output", TerminalOutputEvent { id: id_out.clone(), data }).is_err() {
-                                break;
+                            let (combined, is_borrowed) = if carry.is_empty() {
+                                (&buf[..n], true)
+                            } else {
+                                carry.extend_from_slice(&buf[..n]);
+                                (&carry[..], false)
+                            };
+
+                            let (valid_str, remaining_slice) = match std::str::from_utf8(combined) {
+                                Ok(s) => (s, &[][..]),
+                                Err(err) => {
+                                    let valid_up_to = err.valid_up_to();
+                                    if err.error_len().is_some() {
+                                        let lossy = String::from_utf8_lossy(combined).to_string();
+                                        carry.clear();
+                                        if app_out.emit("terminal-output", TerminalOutputEvent { id: id_out.clone(), data: lossy }).is_err() {
+                                            break;
+                                        }
+                                        continue;
+                                    } else {
+                                        let valid = &combined[..valid_up_to];
+                                        let valid_s = match std::str::from_utf8(valid) {
+                                            Ok(s) => s,
+                                            Err(_) => "",
+                                        };
+                                        (valid_s, &combined[valid_up_to..])
+                                    }
+                                }
+                            };
+
+                            if !valid_str.is_empty() {
+                                if app_out.emit("terminal-output", TerminalOutputEvent { id: id_out.clone(), data: valid_str.to_string() }).is_err() {
+                                    break;
+                                }
+                            }
+
+                            if !remaining_slice.is_empty() {
+                                if is_borrowed {
+                                    carry = remaining_slice.to_vec();
+                                } else {
+                                    let remaining_vec = remaining_slice.to_vec();
+                                    carry = remaining_vec;
+                                }
+                            } else {
+                                carry.clear();
                             }
                         }
                         Err(_) => break,
