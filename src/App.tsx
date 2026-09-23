@@ -29,6 +29,7 @@ import { generateDefaultTaskTitle } from "./utils/tasks";
 import { mergeTokenHighWaterMark } from "./utils/tokens";
 import { loadDraft, saveDraft } from "./utils/drafts";
 import { usePanelLayout } from "./hooks/usePanelLayout";
+import { buildCommandActions, useAvailableCommands } from "./hooks/useCommandActions";
 import { dshClient } from "./services/dshClient";
 import { applyTheme, normalizeThemeMode } from "./themes";
 import type { ThemeMode } from "./themes";
@@ -920,39 +921,30 @@ export function App() {
   // ── Command palette wiring ────────────────────────────────────
   // A command is offered only when its action is wired and meaningful in the
   // current state (e.g. the git panel toggle needs an active project).
-  const commandActions = useMemo<Record<string, () => void>>(() => {
-    const cycleTheme = () => {
-      if (!settings) return;
-      const order: ThemeMode[] = ["system", "pure-white", "pure-black", "atrium-color"];
-      const current = normalizeThemeMode(settings.themeMode);
-      const next = order[(order.indexOf(current) + 1) % order.length];
-      void handleSaveSettings({ ...settings, themeMode: next });
-    };
-    const actions: Record<string, () => void> = {
-      "new-task": () => {
-        void handleNewTask();
-      },
-      "new-project": () => setProjectDialog({ mode: "create" }),
-      "new-terminal": handleNewTerminal,
-      "open-settings": () => setCurrentView("settings"),
-      "open-souls": () => setIsSoulDialogOpen(true),
-      "open-about": () => setIsAboutOpen(true),
-      "toggle-sidebar": () => setIsSidebarCollapsed((prev) => !prev),
-      "toggle-theme": cycleTheme,
-      "switch-language": () => setAppLocale(i18n.language === "zh-CN" ? "en" : "zh-CN"),
-    };
-    if (activeProjectId) {
-      actions["toggle-git"] = () =>
-        setActiveGitProjectId((cur) => (cur === activeProjectId ? null : activeProjectId));
-    }
-    return actions;
+  const commandActions = useMemo<Record<string, () => void>>(
+    () =>
+      buildCommandActions({
+        settings,
+        activeProjectId,
+        onNewTask: () => void handleNewTask(),
+        onNewProject: () => setProjectDialog({ mode: "create" }),
+        onNewTerminal: handleNewTerminal,
+        onOpenSettings: () => setCurrentView("settings"),
+        onOpenSouls: () => setIsSoulDialogOpen(true),
+        onOpenAbout: () => setIsAboutOpen(true),
+        onToggleSidebar: () => setIsSidebarCollapsed((prev) => !prev),
+        onToggleGitPanel: (projectId) =>
+          setActiveGitProjectId((cur) => (cur === projectId ? null : projectId)),
+        onSaveSettings: ({ themeMode }) => {
+          if (!settings) return;
+          void handleSaveSettings({ ...settings, themeMode });
+        },
+      }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings, activeProjectId, handleNewTask]);
-
-  const availableCommands = useMemo(
-    () => COMMANDS.filter((cmd) => cmd.id in commandActions),
-    [commandActions],
+    [settings, activeProjectId, handleNewTask],
   );
+
+  const availableCommands = useAvailableCommands(commandActions);
 
   const paletteTasks = useMemo(
     () =>
