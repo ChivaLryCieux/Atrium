@@ -50,3 +50,6 @@ temp/
 
 # Future references
 deepseek-harness/
+
+# Local reference checkouts (not part of the build)
+ZCode/

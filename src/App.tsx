@@ -30,6 +30,8 @@ import { mergeTokenHighWaterMark } from "./utils/tokens";
 import { loadDraft, saveDraft } from "./utils/drafts";
 import { usePanelLayout } from "./hooks/usePanelLayout";
 import { buildCommandActions, useAvailableCommands } from "./hooks/useCommandActions";
+import { useAppBootstrap } from "./hooks/useAppBootstrap";
+import { useKernelStreams } from "./hooks/useKernelStreams";
 import { dshClient } from "./services/dshClient";
 import { applyTheme, normalizeThemeMode } from "./themes";
 import { useTranslation } from "react-i18next";
@@ -103,205 +105,25 @@ export function App() {
     activeSessionIdRef.current = activeSessionId;
   }, [activeSessionId]);
 
-  // ── Load Settings, Sessions & History ────────────────────────
-  useEffect(() => {
-    invoke<AppSettings>("load_settings")
-      .then((loaded) => {
-        // Ensure default username is Tempsyche if empty
-        if (!loaded.userName || loaded.userName === "OPERATOR") {
-          loaded.userName = "Tempsyche";
-        }
-        setSettings(loaded);
-        // Restore the persisted (provider, model) choice; fall back to the
-        // first profile only when nothing was saved (or it was deleted).
-        const savedProfile =
-          loaded.aiProfiles.find((p) => p.id === loaded.activeProfileId) ??
-          loaded.aiProfiles[0];
-        if (savedProfile) {
-          setActiveProfileId(savedProfile.id);
-          setSelectedModel(loaded.selectedModel || savedProfile.model || "");
-        }
-        if (loaded.reasoningEffort) {
-          // The UI offers three tiers; legacy "off" normalizes to 低耗推理.
-          setReasoningEffort(loaded.reasoningEffort === "off" ? "low" : loaded.reasoningEffort);
-        }
-        if (loaded.executionMode) {
-          setExecutionMode(loaded.executionMode);
-        }
-      })
-      .catch(console.error);
-
-    invoke<SessionSummary[]>("list_sessions")
-      .then((sessionList) => {
-        if (sessionList && sessionList.length > 0) {
-          setSessions(sessionList);
-          const first = sessionList[0];
-          setActiveSessionId(first.id);
-          invoke<ChatMessage[]>("load_session_messages", { sessionId: first.id })
-            .then((loadedMsgs) => {
-              if (loadedMsgs && loadedMsgs.length > 0) setMessages(loadedMsgs);
-            })
-            .catch(console.error);
-        } else {
-          // Fallback to legacy history if any
-          invoke<ChatMessage[]>("load_history")
-            .then(async (cached) => {
-              if (cached && cached.length > 0) {
-                try {
-                  const firstUser = cached.find((m) => m.role === "user");
-                  const title = firstUser ? firstUser.content.slice(0, 20) : tRef.current("app.legacyTaskTitle");
-                  const created = await invoke<SessionSummary>("create_session", { title });
-                  await invoke("save_session_messages", {
-                    sessionId: created.id,
-                    messages: cached,
-                  });
-                  setSessions([created]);
-                  setActiveSessionId(created.id);
-                  setMessages(cached);
-                } catch {
-                  setMessages(cached);
-                }
-              }
-            })
-            .catch(console.error);
-        }
-      })
-      .catch(console.error);
-
-    invoke<string>("get_default_workspace_path")
-      .then(setWorkspacePath)
-      .catch(console.error);
-
-    // Projects (creates the default project and migrates legacy sessions)
-    invoke<Project[]>("list_projects")
-      .then((list) => {
-        setProjects(list);
-        if (list.length > 0) setActiveProjectId(list[0].id);
-      })
-      .catch(console.error);
-
-    // Personas (creates Souls/Default/SOUL.md on first run)
-    invoke<Soul[]>("list_souls").then(setSouls).catch(console.error);
-
-    // Initialize DSH daemon client in background
-    dshClient.init().catch(console.error);
-
-    // Live kernel stream: streamed deltas land in the matching pending node.
-    // Parallel-mode sub-conversations are suffixed `::parallel-N`, so prefix
-    // matching keeps their deltas flowing to the same session view.
-    const unlistenStream = dshClient.onStream((chunk) => {
-      if (isSendingRef.current) return;
-      const active = activeSessionIdRef.current;
-      if (chunk.conversationId && active && !chunk.conversationId.startsWith(active)) return;
-      if (!chunk.stageId || !chunk.content) return;
-      setMessages((prev) =>
-        prev.map((msg) => {
-          if (msg.id !== chunk.stageId || !msg.pending) return msg;
-          if (chunk.isReasoning) {
-            return {
-              ...msg,
-              reasoningContent: (msg.reasoningContent || "") + chunk.content,
-            };
-          }
-          const isPlaceholder =
-            msg.content === tRef.current("app.thinking") ||
-            msg.content.includes(tRef.current("app.stageAnalyzing")) ||
-            (msg.content.startsWith("[") && msg.content.includes("]"));
-          return { ...msg, content: isPlaceholder ? chunk.content! : msg.content + chunk.content! };
-        })
-      );
-    });
-
-    // Real-time tool call telemetry from kernel
-    const unlistenToolEvent = dshClient.onToolEvent((msg) => {
-      if (isSendingRef.current) return;
-      const active = activeSessionIdRef.current;
-      if (msg.conversationId && active && !msg.conversationId.startsWith(active)) return;
-      setMessages((prev) =>
-        prev.map((m) => {
-          const matches = msg.stageId ? m.id === msg.stageId : m.pending && m.role === "assistant";
-          if (!matches) return m;
-
-          const currentTools = Array.isArray(m.toolCalls) ? [...m.toolCalls] : [];
-          if (msg.event.kind === "call") {
-            const item = msg.event.item;
-            const idx = currentTools.findIndex((t) => t.id === item.id);
-            if (idx >= 0) {
-              currentTools[idx] = { ...currentTools[idx], ...item };
-            } else {
-              currentTools.push(item);
-            }
-          } else if (msg.event.kind === "result") {
-            const { callId, result, isError, error, status } = msg.event;
-            const idx = currentTools.findIndex((t) => t.id === callId);
-            if (idx >= 0) {
-              currentTools[idx] = {
-                ...currentTools[idx],
-                result,
-                isError,
-                error,
-                status,
-              };
-            } else {
-              currentTools.push({
-                id: callId,
-                name: "tool",
-                arguments: "",
-                result,
-                isError,
-                error,
-                status,
-                timestamp: Date.now(),
-              });
-            }
-          }
-          return { ...m, toolCalls: currentTools };
-        })
-      );
-    });
-
-    // Real-time token usage telemetry from kernel
-    const unlistenTokenUsage = dshClient.onTokenUsage((msg) => {
-      if (isSendingRef.current) return;
-      const usage = msg.usage;
-      if (!usage) return;
-      const active = activeSessionIdRef.current;
-      if (msg.conversationId && active && !msg.conversationId.startsWith(active)) return;
-      setMessages((prev) =>
-        prev.map((m) => {
-          const matches = msg.stageId ? m.id === msg.stageId : m.pending && m.role === "assistant";
-          if (!matches) return m;
-          // 词元计量只增不减：内核的 attempt/重试或子步骤通知可能乱序到达
-          // 且用量更小，直接覆写会让计数器回落。按字段取高水位。
-          return { ...m, ...mergeTokenHighWaterMark(m, usage) };
-        })
-      );
-    });
-
-    // Real-time agent status telemetry from kernel
-    const unlistenAgentStatus = dshClient.onAgentStatus((msg) => {
-      if (isSendingRef.current) return;
-      const active = activeSessionIdRef.current;
-      if (msg.conversationId && active && !msg.conversationId.startsWith(active)) return;
-      setMessages((prev) =>
-        prev.map((m) => {
-          const matches = msg.stageId ? m.id === msg.stageId : m.pending && m.role === "assistant";
-          if (!matches || !m.pending) return m;
-          return {
-            ...m,
-            statusDetail: msg.detail,
-          };
-        })
-      );
-    });
-
-    return () => {
-      unlistenStream();
-      unlistenToolEvent();
-      unlistenTokenUsage();
-      unlistenAgentStatus();
-    };
-  }, []);
+  // Startup fan-in lives in hooks; streaming merge stays frontend (per-token).
+  useAppBootstrap(
+    {
+      setSettings,
+      setActiveProfileId,
+      setSelectedModel,
+      setReasoningEffort,
+      setExecutionMode,
+      setSessions,
+      setActiveSessionId,
+      setMessages,
+      setWorkspacePath,
+      setProjects,
+      setActiveProjectId,
+      setSouls,
+    },
+    tRef,
+  );
+  useKernelStreams(setMessages, { isSendingRef, activeSessionIdRef, tRef });
 
   // ── Apply theme + font scale ─────────────────────────────────
   useEffect(() => {
