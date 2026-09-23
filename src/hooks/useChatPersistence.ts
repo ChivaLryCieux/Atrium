@@ -7,6 +7,10 @@ import type { AppSettings, ChatMessage, SessionSummary } from "../types/chat";
  * Debounced persistence: per-session messages + legacy global history.
  * No cleanup on unmount — the pending timeout is overwritten, never leaked,
  * matching the original App behavior exactly.
+ *
+ * `save_session_messages` already refreshes the index row (message_count /
+ * updated_at) inside the kernel, so the local list is patched in place
+ * instead of paying a follow-up `list_sessions` round-trip per autosave.
  */
 export function useChatPersistence(
   settings: AppSettings | null,
@@ -23,14 +27,20 @@ export function useChatPersistence(
     }
     const timeoutId = setTimeout(() => {
       if (activeSessionId) {
-        invoke("save_session_messages", {
-          sessionId: activeSessionId,
-          messages,
-        })
+        const sessionId = activeSessionId;
+        invoke("save_session_messages", { sessionId, messages })
           .then(() => {
-            invoke<SessionSummary[]>("list_sessions")
-              .then(setSessions)
-              .catch(console.error);
+            setSessions((prev) =>
+              prev.map((s) =>
+                s.id === sessionId
+                  ? {
+                      ...s,
+                      messageCount: messages.length,
+                      updatedAt: Math.floor(Date.now() / 1000),
+                    }
+                  : s
+              )
+            );
           })
           .catch(console.error);
       }
