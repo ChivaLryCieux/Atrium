@@ -3,6 +3,7 @@ import type { Dispatch, SetStateAction } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { AppSettings, Project, SessionSummary, Soul } from "../types/chat";
 import { dshClient } from "../services/dshClient";
+import { deleteProjectAggregated } from "../services/projectApi";
 
 export type ProjectSoulHandlers = {
   handleProjectSaved: (saved: Project) => void;
@@ -14,10 +15,9 @@ export type ProjectSoulHandlers = {
 
 /**
  * Project + persona state transitions against the Rust storage layer.
- * Session handlers stay in App until useSendMessage lands (they share its
- * pending-message state). Behavior is a verbatim move — including the
- * backend re-homing sessions of a deleted project into the first
- * remaining project.
+ * Session handlers stay in App (they share its pending-message state).
+ * Behavior is a verbatim move — including the backend re-homing sessions
+ * of a deleted project into the first remaining project.
  */
 export function useProjectSoulState(
   settings: AppSettings | null,
@@ -45,24 +45,22 @@ export function useProjectSoulState(
     [setProjects, setActiveProjectId],
   );
 
-  // Project dialog delete: the backend re-homed the deleted project's
-  // sessions into the first remaining project, so the local session list
-  // (project ownership) and the active project both need refreshing; the
-  // git panel closes when its project disappears.
+  // Project dialog delete: one aggregated invoke returns the refreshed
+  // projects + sessions (backend re-homed the deleted project's sessions
+  // into the first remaining project) plus that fallback id. The git panel
+  // closes when its project disappears.
   const handleProjectDeleted = useCallback(
     (deletedId: string) => {
-      invoke<Project[]>("list_projects")
-        .then((list) => {
-          setProjects(list);
+      deleteProjectAggregated(deletedId)
+        .then((result) => {
+          setProjects(result.projects);
+          setSessions(result.sessions);
           if (activeProjectId === deletedId) {
-            setActiveProjectId(list[0]?.id ?? null);
+            setActiveProjectId(result.fallbackProjectId);
           }
           if (activeGitProjectId === deletedId) {
             setActiveGitProjectId(null);
           }
-          invoke<SessionSummary[]>("list_sessions")
-            .then(setSessions)
-            .catch(console.error);
         })
         .catch(console.error);
     },

@@ -18,7 +18,6 @@ import {
   SessionSummary,
   Soul,
 } from "./types/chat";
-import { generateDefaultTaskTitle } from "./utils/tasks";
 import { usePanelLayout } from "./hooks/usePanelLayout";
 import { buildCommandActions, useAvailableCommands } from "./hooks/useCommandActions";
 import { useAppBootstrap } from "./hooks/useAppBootstrap";
@@ -26,7 +25,7 @@ import { useKernelStreams } from "./hooks/useKernelStreams";
 import { useChatPersistence } from "./hooks/useChatPersistence";
 import { useComposerDrafts } from "./hooks/useComposerDrafts";
 import { useActiveProfile } from "./hooks/useActiveProfile";
-import { useSendMessage } from "./hooks/useSendMessage";
+import { useSendMessage, generateSessionTitle } from "./hooks/useSendMessage";
 import { useProjectSoulState } from "./hooks/useProjectSoulState";
 import { dshClient } from "./services/dshClient";
 import { applyTheme, normalizeThemeMode } from "./themes";
@@ -177,8 +176,10 @@ export function App() {
   const handleNewTask = async (projectId?: string) => {
     const targetProjectId = projectId || activeProjectId;
     if (targetProjectId) setActiveProjectId(targetProjectId);
-    const title = generateDefaultTaskTitle(sessions, targetProjectId, t);
     try {
+      // Title numbering lives in the kernel (generate_session_title): the
+      // stored index is the source of truth, no local session scan needed.
+      const title = await generateSessionTitle(targetProjectId ?? null, t);
       const created = await invoke<SessionSummary>("create_session", {
         title,
         projectId: targetProjectId,

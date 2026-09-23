@@ -13,7 +13,6 @@ import type {
 } from "../types/chat";
 import { createUserMessage } from "../constants/defaults";
 import { createPendingMessages } from "../utils/messages";
-import { generateDefaultTaskTitle } from "../utils/tasks";
 import { mergeTokenHighWaterMark } from "../utils/tokens";
 import { dshClient } from "../services/dshClient";
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
@@ -153,7 +152,9 @@ async function sendPipeline(d: SendPipelineDeps) {
 async function ensureSession(d: SendPipelineDeps): Promise<string | null> {
   const { t } = d;
   try {
-    const title = generateDefaultTaskTitle(d.sessions, d.activeProjectId, t);
+    // Title numbering lives in the kernel: it scans the stored index, so the
+    // caller no longer needs the full session list just to name a task.
+    const title = await generateSessionTitle(d.activeProjectId, t);
     const created = await invoke<SessionSummary>("create_session", {
       title,
       projectId: d.activeProjectId,
@@ -165,6 +166,25 @@ async function ensureSession(d: SendPipelineDeps): Promise<string | null> {
     console.error(t("app.createSessionFailed"), err);
     return d.activeSessionId;
   }
+}
+
+/**
+ * Default task title via the Rust storage layer: `generate_session_title`
+ * scans the stored session index (max+1 with a length+1 floor) and the
+ * webview localizes the final "任务N：M.D" string.
+ */
+export async function generateSessionTitle(
+  projectId: string | null,
+  t: (key: string, options?: Record<string, unknown>) => string,
+): Promise<string> {
+  const parts = await invoke<{ number: number; date: string }>("generate_session_title", {
+    projectId,
+  });
+  return t("sidebar.defaultTaskTitle", {
+    number: parts.number,
+    date: parts.date,
+    defaultValue: `任务${parts.number}：${parts.date}`,
+  });
 }
 
 function buildPendingMessages(d: SendPipelineDeps, t: (key: string) => string): PendingMessage[] {
@@ -313,13 +333,19 @@ function settleReplies(
       reasoningContent: reply.reasoningContent || pending?.reasoningContent || null,
     };
   });
-  const updatedMessages = [...baseMessages, ...mergedReplies];
+  // Persistence + index refresh happen server-side inside
+  // execute_orchestration (message file + updated_at/message_count in the
+  // index). The local list keeps its ordering; just bump the touched
+  // session's row from the payload we already have — no extra round-trip.
   if (curSessionId) {
-    invoke("save_session_messages", { sessionId: curSessionId, messages: updatedMessages })
-      .then(() => {
-        invoke<SessionSummary[]>("list_sessions").then(d.setSessions).catch(console.error);
-      })
-      .catch(console.error);
+    const updatedMessages = [...baseMessages, ...mergedReplies];
+    d.setSessions((prevSessions) =>
+      prevSessions.map((s) =>
+        s.id === curSessionId
+          ? { ...s, messageCount: updatedMessages.length, updatedAt: Math.floor(Date.now() / 1000) }
+          : s
+      )
+    );
   }
-  return updatedMessages;
+  return [...baseMessages, ...mergedReplies];
 }
