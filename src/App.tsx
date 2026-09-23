@@ -35,7 +35,11 @@ import { createPendingMessages } from "./utils/messages";
 import { generateDefaultTaskTitle } from "./utils/tasks";
 import { dshClient } from "./services/dshClient";
 import { applyTheme, normalizeThemeMode } from "./themes";
+import type { ThemeMode } from "./themes";
 import { useTranslation } from "react-i18next";
+import i18n, { setAppLocale } from "./locales";
+import { COMMANDS, matchesShortcut } from "./commands/registry";
+import { CommandPalette } from "./components/CommandPalette";
 
 export function App() {
   const { t } = useTranslation();
@@ -64,6 +68,7 @@ export function App() {
   const [activeTerminalId, setActiveTerminalId] = useState<string | null>(null);
   const [isTerminalOpen, setIsTerminalOpen] = useState<boolean>(false);
   const [activeGitProjectId, setActiveGitProjectId] = useState<string | null>(null);
+  const [isPaletteOpen, setIsPaletteOpen] = useState<boolean>(false);
 
   // ── Panel Resizing States (with localStorage persistence) ──
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
@@ -902,15 +907,62 @@ export function App() {
     }));
   }, [sessions]);
 
-  // ── Keyboard shortcuts (Ctrl+N, Ctrl+K) ──────────────────────
+  // ── Command palette wiring ────────────────────────────────────
+  // A command is offered only when its action is wired and meaningful in the
+  // current state (e.g. the git panel toggle needs an active project).
+  const commandActions = useMemo<Record<string, () => void>>(() => {
+    const cycleTheme = () => {
+      if (!settings) return;
+      const order: ThemeMode[] = ["system", "pure-white", "pure-black", "atrium-color"];
+      const current = normalizeThemeMode(settings.themeMode);
+      const next = order[(order.indexOf(current) + 1) % order.length];
+      void handleSaveSettings({ ...settings, themeMode: next });
+    };
+    const actions: Record<string, () => void> = {
+      "new-task": () => {
+        void handleNewTask();
+      },
+      "new-project": () => setProjectDialog({ mode: "create" }),
+      "new-terminal": handleNewTerminal,
+      "open-settings": () => setCurrentView("settings"),
+      "open-souls": () => setIsSoulDialogOpen(true),
+      "open-about": () => setIsAboutOpen(true),
+      "toggle-sidebar": () => setIsSidebarCollapsed((prev) => !prev),
+      "toggle-theme": cycleTheme,
+      "switch-language": () => setAppLocale(i18n.language === "zh-CN" ? "en" : "zh-CN"),
+    };
+    if (activeProjectId) {
+      actions["toggle-git"] = () =>
+        setActiveGitProjectId((cur) => (cur === activeProjectId ? null : activeProjectId));
+    }
+    return actions;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings, activeProjectId, handleNewTask]);
+
+  const availableCommands = useMemo(
+    () => COMMANDS.filter((cmd) => cmd.id in commandActions),
+    [commandActions],
+  );
+
+  const paletteTasks = useMemo(
+    () =>
+      sidebarTasks.map((task) => ({
+        id: task.id,
+        title: task.title,
+        projectName: projects.find((p) => p.id === task.projectId)?.name,
+      })),
+    [sidebarTasks, projects],
+  );
+
+  // ── Keyboard shortcuts (Ctrl+N new task · Ctrl+K / Ctrl+Shift+P palette) ──
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "n") {
+      if (matchesShortcut(e, "Ctrl+N")) {
         e.preventDefault();
         handleNewTask();
-      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+      } else if (matchesShortcut(e, "Ctrl+K") || matchesShortcut(e, "Ctrl+Shift+P")) {
         e.preventDefault();
-        setIsAboutOpen(true);
+        setIsPaletteOpen(true);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
@@ -1201,8 +1253,29 @@ export function App() {
         />
       )}
 
-      {/* About / Charter Modal (question-mark button, Ctrl+K) */}
+      {/* About / Charter Modal (question-mark button · Ctrl+K palette entry) */}
       {isAboutOpen && <AboutDialog onClose={() => setIsAboutOpen(false)} />}
+
+      {/* Command Center (Ctrl+K / Ctrl+Shift+P) */}
+      {isPaletteOpen && (
+        <CommandPalette
+          onClose={() => setIsPaletteOpen(false)}
+          commands={availableCommands}
+          tasks={paletteTasks}
+          projects={projects.map((p) => ({ id: p.id, name: p.name }))}
+          activeTaskId={activeSessionId}
+          activeProjectId={activeProjectId}
+          onRunCommand={(id) => commandActions[id]?.()}
+          onSelectTask={(id) => {
+            setCurrentView("workspace");
+            void handleSelectSession(id);
+          }}
+          onSelectProject={(id) => {
+            setCurrentView("workspace");
+            setActiveProjectId(id);
+          }}
+        />
+      )}
     </div>
   );
 }

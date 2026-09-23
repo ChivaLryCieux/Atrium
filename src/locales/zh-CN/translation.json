@@ -333,5 +333,27 @@
     "speed": "生成速率",
     "latency": "耗时",
     "tokensPerSec": "{{speed}} tok/s"
+  },
+  "command": {
+    "paletteTitle": "命令面板",
+    "inputPlaceholder": "搜索命令、会话或项目…",
+    "sectionCommands": "命令",
+    "sectionTasks": "会话",
+    "sectionProjects": "项目",
+    "hintNavigate": "导航",
+    "hintRun": "执行",
+    "hintClose": "关闭",
+    "noResults": "无匹配项",
+    "activeBadge": "当前",
+    "newTask": "新建任务",
+    "newProject": "新建项目",
+    "newTerminal": "新建终端",
+    "openSettings": "打开设置",
+    "openSouls": "打开 Soul 管理",
+    "openAbout": "关于与产品宪章",
+    "toggleSidebar": "折叠 / 展开侧栏",
+    "toggleGit": "源码管理面板",
+    "toggleTheme": "切换主题",
+    "switchLanguage": "切换语言"
   }
 }

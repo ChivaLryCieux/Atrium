@@ -333,5 +333,27 @@
     "speed": "Speed",
     "latency": "Latency",
     "tokensPerSec": "{{speed}} tok/s"
+  },
+  "command": {
+    "paletteTitle": "Command Palette",
+    "inputPlaceholder": "Search commands, tasks or projects…",
+    "sectionCommands": "Commands",
+    "sectionTasks": "Tasks",
+    "sectionProjects": "Projects",
+    "hintNavigate": "navigate",
+    "hintRun": "run",
+    "hintClose": "close",
+    "noResults": "No matches",
+    "activeBadge": "active",
+    "newTask": "New Task",
+    "newProject": "New Project",
+    "newTerminal": "New Terminal",
+    "openSettings": "Open Settings",
+    "openSouls": "Open Soul Manager",
+    "openAbout": "About & Charter",
+    "toggleSidebar": "Collapse / Expand Sidebar",
+    "toggleGit": "Source Control Panel",
+    "toggleTheme": "Cycle Theme",
+    "switchLanguage": "Switch Language"
   }
 }
