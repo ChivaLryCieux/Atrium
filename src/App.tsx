@@ -26,6 +26,7 @@ import {
 } from "./types/chat";
 import { createPendingMessages } from "./utils/messages";
 import { generateDefaultTaskTitle } from "./utils/tasks";
+import { mergeTokenHighWaterMark } from "./utils/tokens";
 import { loadDraft, saveDraft } from "./utils/drafts";
 import { usePanelLayout } from "./hooks/usePanelLayout";
 import { dshClient } from "./services/dshClient";
@@ -273,11 +274,7 @@ export function App() {
           if (!matches) return m;
           // 词元计量只增不减：内核的 attempt/重试或子步骤通知可能乱序到达
           // 且用量更小，直接覆写会让计数器回落。按字段取高水位。
-          return {
-            ...m,
-            promptTokens: Math.max(m.promptTokens ?? 0, usage.inputTokens),
-            completionTokens: Math.max(m.completionTokens ?? 0, usage.outputTokens),
-          };
+          return { ...m, ...mergeTokenHighWaterMark(m, usage) };
         })
       );
     });
@@ -750,11 +747,7 @@ export function App() {
               const matches = stageId ? m.id === stageId : m.pending && m.role === "assistant";
               if (!matches) return m;
               // 同 WS 监听：乱序的小额用量通知不得让计量回落。
-              return {
-                ...m,
-                promptTokens: Math.max(m.promptTokens ?? 0, usage.inputTokens),
-                completionTokens: Math.max(m.completionTokens ?? 0, usage.outputTokens),
-              };
+              return { ...m, ...mergeTokenHighWaterMark(m, usage) };
             })
           );
         } else if (payload.type === "agent-status") {
@@ -804,10 +797,12 @@ export function App() {
               : pending?.toolCalls ?? null;
           // 结算合并同样走高水位：回复载荷若缺失/小于流式期间已记录的
           // 内核精确值，保留较大者，避免「落定瞬间数字回落」。
-          const promptTokens =
-            Math.max(reply.promptTokens ?? 0, pending?.promptTokens ?? 0) || null;
-          const completionTokens =
-            Math.max(reply.completionTokens ?? 0, pending?.completionTokens ?? 0) || null;
+          const watermark = mergeTokenHighWaterMark(pending ?? {}, {
+            inputTokens: reply.promptTokens ?? 0,
+            outputTokens: reply.completionTokens ?? 0,
+          });
+          const promptTokens = watermark.promptTokens || null;
+          const completionTokens = watermark.completionTokens || null;
           const reasoningContent = reply.reasoningContent || pending?.reasoningContent || null;
           return {
             ...reply,
