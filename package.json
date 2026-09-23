@@ -1,6 +1,6 @@
 {
   "name": "atrium",
-  "version": "0.3.0",
+  "version": "0.3.5",
   "description": "Atrium - 智役中庭 (AI Agent Harness Terminal)",
   "private": true,
   "type": "module",

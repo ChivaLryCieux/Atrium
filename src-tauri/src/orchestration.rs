@@ -242,6 +242,18 @@ struct KernelTurnRequest {
     prompt: String,
 }
 
+#[derive(serde::Deserialize, Default, Clone)]
+#[serde(rename_all = "camelCase")]
+struct KernelUsageInfo {
+    #[serde(default)]
+    input_tokens: Option<u64>,
+    #[serde(default)]
+    output_tokens: Option<u64>,
+    #[serde(default)]
+    #[allow(dead_code)]
+    total_tokens: Option<u64>,
+}
+
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct KernelTurnResponse {
@@ -257,7 +269,19 @@ struct KernelTurnResponse {
     #[serde(default)]
     output_tokens: Option<u64>,
     #[serde(default)]
+    usage: Option<KernelUsageInfo>,
+    #[serde(default)]
     tool_calls: Option<Vec<crate::models::ToolCallRecord>>,
+}
+
+impl KernelTurnResponse {
+    fn get_input_tokens(&self) -> Option<u64> {
+        self.input_tokens.or_else(|| self.usage.as_ref().and_then(|u| u.input_tokens))
+    }
+
+    fn get_output_tokens(&self) -> Option<u64> {
+        self.output_tokens.or_else(|| self.usage.as_ref().and_then(|u| u.output_tokens))
+    }
 }
 
 async fn post_turn(
@@ -307,7 +331,10 @@ async fn post_turn(
     let mut stream = response.bytes_stream();
     let mut buffer = String::new();
     let mut final_turn: Option<KernelTurnResponse> = None;
-    let mut current_event_type = String::new();
+    let mut accumulated_text = String::new();
+    let mut accumulated_reasoning = String::new();
+    let mut stream_tool_calls: Vec<crate::models::ToolCallRecord> = Vec::new();
+    let mut last_error_msg: Option<String> = None;
 
     while let Some(chunk_result) = stream.next().await {
         let chunk = match chunk_result {
@@ -329,6 +356,7 @@ async fn post_turn(
             let message = buffer[..pos].to_string();
             buffer = buffer[pos + 2..].to_string();
 
+            let mut current_event_type = String::new();
             let mut data_str = String::new();
             for line in message.lines() {
                 if let Some(event_val) = line.strip_prefix("event: ") {
@@ -346,12 +374,78 @@ async fn post_turn(
                 "stream" => {
                     // Forward raw dsh JSON payload directly to the frontend via Tauri IPC
                     if let Ok(json_val) = serde_json::from_str::<serde_json::Value>(&data_str) {
-                        let _ = app.emit("kernel-stream-event", json_val);
+                        let _ = app.emit("kernel-stream-event", &json_val);
+
+                        // Track accumulated text chunks and tool calls for fallback
+                        if let Some(msg_type) = json_val.get("type").and_then(|v| v.as_str()) {
+                            if msg_type == "assistant-stream" {
+                                if let Some(content) = json_val.get("content").and_then(|v| v.as_str()) {
+                                    let is_reasoning = json_val.get("isReasoning").and_then(|v| v.as_bool()).unwrap_or(false);
+                                    if is_reasoning {
+                                        accumulated_reasoning.push_str(content);
+                                    } else {
+                                        accumulated_text.push_str(content);
+                                    }
+                                }
+                            } else if msg_type == "tool-event" {
+                                if let Some(event_obj) = json_val.get("event") {
+                                    if let Some(kind) = event_obj.get("kind").and_then(|v| v.as_str()) {
+                                        if kind == "call" {
+                                            if let Some(item) = event_obj.get("item") {
+                                                if let Ok(tool_record) = serde_json::from_value::<crate::models::ToolCallRecord>(item.clone()) {
+                                                    stream_tool_calls.push(tool_record);
+                                                }
+                                            }
+                                        } else if kind == "result" {
+                                            if let Some(call_id) = event_obj.get("callId").and_then(|v| v.as_str()) {
+                                                if let Some(call) = stream_tool_calls.iter_mut().find(|c| c.id == call_id) {
+                                                    call.result = event_obj.get("result").and_then(|v| v.as_str()).map(str::to_string);
+                                                    call.is_error = event_obj.get("isError").and_then(|v| v.as_bool()).unwrap_or(false);
+                                                    call.error = event_obj.get("error").and_then(|v| v.as_str()).map(str::to_string);
+                                                    call.status = event_obj.get("status").and_then(|v| v.as_str()).unwrap_or("completed").to_string();
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
                 "done" => {
-                    if let Ok(resp) = serde_json::from_str::<KernelTurnResponse>(&data_str) {
-                        final_turn = Some(resp);
+                    match serde_json::from_str::<KernelTurnResponse>(&data_str) {
+                        Ok(resp) => {
+                            final_turn = Some(resp);
+                        }
+                        Err(e) => {
+                            eprintln!("[ATRIUM_SSE] Failed to parse done payload directly: {e}, falling back to tolerant extraction");
+                            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&data_str) {
+                                let session_id = val.get("sessionId").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+                                let mut final_response = val.get("finalResponse").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+                                if final_response.is_empty() && !accumulated_text.is_empty() {
+                                    final_response = accumulated_text.clone();
+                                }
+                                let reasoning_content = val.get("reasoningContent")
+                                    .and_then(|v| v.as_str())
+                                    .map(str::to_string)
+                                    .or_else(|| if !accumulated_reasoning.is_empty() { Some(accumulated_reasoning.clone()) } else { None });
+
+                                let usage = val.get("usage").and_then(|u| serde_json::from_value::<KernelUsageInfo>(u.clone()).ok());
+                                let tool_calls = val.get("toolCalls")
+                                    .and_then(|tc| serde_json::from_value::<Vec<crate::models::ToolCallRecord>>(tc.clone()).ok())
+                                    .or_else(|| if !stream_tool_calls.is_empty() { Some(stream_tool_calls.clone()) } else { None });
+
+                                final_turn = Some(KernelTurnResponse {
+                                    session_id,
+                                    final_response,
+                                    reasoning_content,
+                                    input_tokens: None,
+                                    output_tokens: None,
+                                    usage,
+                                    tool_calls,
+                                });
+                            }
+                        }
                     }
                 }
                 "error" => {
@@ -359,13 +453,41 @@ async fn post_turn(
                         let msg = err_val
                             .get("error")
                             .and_then(|e| e.as_str())
-                            .unwrap_or("内核内部执行错误");
-                        return Err(msg.to_string());
+                            .unwrap_or("内核内部执行错误")
+                            .to_string();
+                        last_error_msg = Some(msg);
                     }
                 }
                 _ => {}
             }
         }
+    }
+
+    if let Some(turn) = final_turn {
+        return Ok(turn);
+    }
+
+    // Stream salvage fallback: if the SSE connection terminated without a final "done" event
+    // but we already accumulated streamed text or reasoning, salvage it as a graceful settlement.
+    if !accumulated_text.is_empty() || !accumulated_reasoning.is_empty() {
+        eprintln!(
+            "[ATRIUM_SSE] Connection closed before 'done' event; salvaging {} chars text and {} chars reasoning",
+            accumulated_text.len(),
+            accumulated_reasoning.len()
+        );
+        return Ok(KernelTurnResponse {
+            session_id: String::new(),
+            final_response: accumulated_text,
+            reasoning_content: if accumulated_reasoning.is_empty() { None } else { Some(accumulated_reasoning) },
+            input_tokens: None,
+            output_tokens: None,
+            usage: None,
+            tool_calls: if stream_tool_calls.is_empty() { None } else { Some(stream_tool_calls) },
+        });
+    }
+
+    if let Some(err) = last_error_msg {
+        return Err(err);
     }
 
     final_turn.ok_or_else(|| "内核流式响应提前终止，未返回结算结果".to_string())
@@ -405,9 +527,8 @@ fn kernel_stage_prompt(stage: &OrchestrationStage, index: usize, user_input: &st
         if let Some(soul) = soul.map(str::trim).filter(|s| !s.is_empty()) {
             prompt.push_str(&format!("[人格设定]\n{soul}\n\n"));
         }
-        let guidance = web_access_guidance(&stage.profile.endpoint);
-        if !guidance.is_empty() || !persona.is_empty() {
-            prompt.push_str(&format!("[算子准则]\n{}{}\n\n", guidance, persona));
+        if !persona.is_empty() {
+            prompt.push_str(&format!("[算子准则]\n{persona}\n\n"));
         }
         prompt.push_str(&format!(
             "[节点指令] {}\n\n[操作员输入]\n{}",
@@ -564,11 +685,11 @@ fn record_turn_usage(
     project: Option<(&str, &str, Option<&str>)>,
 ) {
     let prompt_tokens = turn
-        .input_tokens
+        .get_input_tokens()
         .map(|n| n as usize)
         .unwrap_or_else(|| crate::tokens::estimate_tokens(prompt));
     let completion_tokens = turn
-        .output_tokens
+        .get_output_tokens()
         .map(|n| n as usize)
         .unwrap_or_else(|| crate::tokens::estimate_tokens(&turn.final_response));
     let project_ctx = project.map(|(id, name, _)| (id, name));
@@ -602,21 +723,10 @@ fn single_route_fingerprint(
 }
 
 /// Check whether an endpoint corresponds to official DeepSeek services.
+#[allow(dead_code)]
 fn is_official_deepseek(endpoint: &str) -> bool {
     let ep = endpoint.trim().to_lowercase();
     ep.is_empty() || ep.contains("api.deepseek.com")
-}
-
-/// Dynamic web-access instructions injected based on the provider/endpoint:
-/// Official DeepSeek has native web search credentials; third-party endpoints
-/// (such as StepFun, Moonshot, OpenAI proxies) lack DeepSeek web_search authentication
-/// and should use web_fetch for direct page access.
-fn web_access_guidance(endpoint: &str) -> &'static str {
-    if is_official_deepseek(endpoint) {
-        ""
-    } else {
-        "[网络访问准则]\n当前运行于第三方模型服务，请使用 `web_fetch` 工具抓取、阅读与分析指定网页或资讯 URL；避免调用需要 DeepSeek 官方搜索凭据的 `web_search` 工具。若需获取外部实时信息，请明确目标网址后通过 `web_fetch` 抓取。\n\n"
-    }
 }
 
 /// Build the single-engine kernel prompt. On seed turns the persona
@@ -627,7 +737,6 @@ fn single_kernel_prompt(
     user_input: &str,
     soul: Option<&str>,
     system_prompt: &str,
-    endpoint: &str,
     seed: bool,
 ) -> String {
     if !seed {
@@ -637,10 +746,9 @@ fn single_kernel_prompt(
     if let Some(s) = soul.map(str::trim).filter(|s| !s.is_empty()) {
         prompt.push_str(&format!("[人格设定]\n{s}\n\n"));
     }
-    let guidance = web_access_guidance(endpoint);
     let trimmed_persona = system_prompt.trim();
-    if !guidance.is_empty() || !trimmed_persona.is_empty() {
-        prompt.push_str(&format!("[算子准则]\n{}{}\n\n", guidance, trimmed_persona));
+    if !trimmed_persona.is_empty() {
+        prompt.push_str(&format!("[算子准则]\n{trimmed_persona}\n\n"));
     }
     prompt.push_str(&format!("[操作员输入]\n{user_input}"));
     prompt
@@ -764,7 +872,7 @@ async fn execute_single_kernel(
         .map(|seeded| seeded != &fingerprint)
         .unwrap_or(settled);
     let seed = !settled || rerouted;
-    let prompt = single_kernel_prompt(&user_input, soul, &profile.system_prompt, &profile.endpoint, seed);
+    let prompt = single_kernel_prompt(&user_input, soul, &profile.system_prompt, seed);
     let stage_id = format!("{}-single", profile.id);
 
     let _ = app.emit(
@@ -815,11 +923,11 @@ async fn execute_single_kernel(
                 cache.insert(conversation.to_string(), fingerprint);
             }
             let prompt_tokens = turn
-                .input_tokens
+                .get_input_tokens()
                 .map(|n| n as usize)
                 .unwrap_or_else(|| crate::tokens::estimate_tokens(&prompt));
             let completion_tokens = turn
-                .output_tokens
+                .get_output_tokens()
                 .map(|n| n as usize)
                 .unwrap_or_else(|| crate::tokens::estimate_tokens(&turn.final_response));
             let reply = ChatMessage {
@@ -903,11 +1011,10 @@ async fn execute_parallel_kernel(
     let futures = profiles.iter().enumerate().map(|(index, profile)| {
         let conversation = format!("{conversation}::parallel-{index}");
         let persona = profile.system_prompt.trim();
-        let guidance = web_access_guidance(&profile.endpoint);
-        let persona_block = if persona.is_empty() && guidance.is_empty() {
+        let persona_block = if persona.is_empty() {
             String::new()
         } else {
-            format!("[算子准则]\n{}{}\n\n", guidance, persona)
+            format!("[算子准则]\n{persona}\n\n")
         };
         let prompt = format!("{}{}[操作员输入]\n{}", soul_block.clone().unwrap_or_default(), persona_block, user_input);
         let request = KernelTurnRequest {
@@ -939,11 +1046,11 @@ async fn execute_parallel_kernel(
                 Ok(turn) => {
                     record_turn_usage(app, profile.model.trim(), &prompt, &turn, latency, project);
                     let prompt_tokens = turn
-                        .input_tokens
+                        .get_input_tokens()
                         .map(|n| n as usize)
                         .unwrap_or_else(|| crate::tokens::estimate_tokens(&prompt));
                     let completion_tokens = turn
-                        .output_tokens
+                        .get_output_tokens()
                         .map(|n| n as usize)
                         .unwrap_or_else(|| crate::tokens::estimate_tokens(&turn.final_response));
                     ChatMessage {

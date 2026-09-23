@@ -1,6 +1,6 @@
 [package]
 name = "atrium"
-version = "0.3.0"
+version = "0.3.5"
 description = "Atrium AI Agent Harness Terminal"
 authors = ["Atrium"]
 edition = "2021"

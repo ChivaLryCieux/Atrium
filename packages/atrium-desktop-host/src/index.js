@@ -300,6 +300,9 @@ function handleNotification(route, notification, state, sseWrite) {
   }
   const _emitStream = (cid, sid, content, extra = {}) => {
     if (content === undefined || content === null) return
+    if (!extra.isReasoning) {
+      state.emittedText = (state.emittedText || '') + content
+    }
     _emit({ type: 'assistant-stream', conversationId: cid, stageId: sid, content, ...extra })
   }
 
@@ -491,20 +494,36 @@ function runTurn(request, sseWrite) {
   const execution = record.chain.then(async () => {
     const entry = await ensureHarness(request)
     const route = { conversationId, stageId }
-    const state = { usage: null, toolCalls: [], reasoningText: '' }
+    const state = { usage: null, toolCalls: [], reasoningText: '', emittedText: '' }
     broadcastTelemetry(conversationId, stageId, { kind: 'turn-start', model: request.model })
 
-    const result = await entry.harness.run(prompt, {
-      ...(record.dshSessionId ? { sessionId: record.dshSessionId } : {}),
-      onNotification: (notification) => handleNotification(route, notification, state, sseWrite),
-    })
+    let result
+    try {
+      result = await entry.harness.run(prompt, {
+        ...(record.dshSessionId ? { sessionId: record.dshSessionId } : {}),
+        onNotification: (notification) => handleNotification(route, notification, state, sseWrite),
+      })
+    } catch (runError) {
+      // If harness.run rejected (e.g. repeated tool execution failure or network break),
+      // check if we already emitted substantial text. If so, recover partial output
+      // so the user never loses answers already generated.
+      if (state.emittedText && state.emittedText.trim().length > 0) {
+        console.warn(`[ATRIUM_BRIDGE] Turn execution failed with error: ${runError?.message ?? runError}. Recovering emitted text (${state.emittedText.length} chars).`);
+        result = {
+          sessionId: record.dshSessionId ?? 'recovered-session',
+          finalResponse: state.emittedText,
+        }
+      } else {
+        throw runError
+      }
+    }
 
     bindConversation(conversationId, result.sessionId)
     broadcastTelemetry(conversationId, stageId, { kind: 'turn-complete', sessionId: result.sessionId })
 
     return {
       sessionId: result.sessionId,
-      finalResponse: result.finalResponse ?? '',
+      finalResponse: result.finalResponse ?? state.emittedText ?? '',
       reasoningContent: state.reasoningText || undefined,
       ...(state.usage ? { usage: state.usage } : {}),
       toolCalls: state.toolCalls,
@@ -620,9 +639,13 @@ const httpServer = createServer(async (req, res) => {
         const result = await runTurn(request, sseWrite)
         res.write(`event: done\ndata: ${JSON.stringify(result)}\n\n`)
       } catch (error) {
-        res.write(`event: error\ndata: ${JSON.stringify({ error: error?.message ?? String(error) })}\n\n`)
+        try {
+          res.write(`event: error\ndata: ${JSON.stringify({ error: error?.message ?? String(error) })}\n\n`)
+        } catch { /* client disconnected */ }
       }
-      res.end()
+      try {
+        res.end()
+      } catch { /* socket already closed */ }
       return
     }
 
