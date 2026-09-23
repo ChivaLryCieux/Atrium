@@ -106,8 +106,8 @@ pub struct DshDaemon {
     pub connection: HarnessConnection,
     child: Option<Child>,
     /// Whether the bridge reported the dsh runtime itself as ready. Kept
-    /// separate from `connection.status`: a reachable bridge with a missing
-    /// kernel (packaged light builds) must route turns to the direct API.
+    /// separate from `connection.status`: a reachable bridge whose kernel
+    /// failed to load must route turns to the direct API fallback.
     kernel_ready: bool,
     #[cfg(target_os = "windows")]
     job: Option<job::JobGuard>,

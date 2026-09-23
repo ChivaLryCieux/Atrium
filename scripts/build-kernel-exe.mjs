@@ -4,7 +4,7 @@
  * Atrium // Kernel runtime build (single-file dsh executable)
  *
  * Produces upstream's packaged single-file DeepSeek Harness runtime and stages
- * it where `bundle-runtime.mjs --with-kernel` picks it up:
+ * it where `bundle-runtime.mjs` picks it up:
  *
  *   .kernel-dist/deepseek-harness-sdk-runtime-<platform>-<arch>.exe     ~250 MB
  *   .kernel-dist/deepseek-harness-sdk-runtime-<platform>-<arch>-rg.exe  ~6 MB
@@ -168,7 +168,7 @@ mkdirSync(DIST_DIR, { recursive: true });
 cpSync(join(productsDir, runtime), join(DIST_DIR, runtime));
 cpSync(join(productsDir, sidecar), join(DIST_DIR, sidecar));
 writeFileSync(join(DIST_DIR, ".built-from"), `${kernelCommit}\n`);
-writeFileSync(join(DIST_DIR, "README.txt"), "Built by `pnpm run build:kernel-exe`; consumed by `pnpm run bundle:runtime -- --with-kernel`.\n");
+writeFileSync(join(DIST_DIR, "README.txt"), "Built by `pnpm run build:kernel-exe`; consumed by `pnpm run bundle:runtime`.\n");
 
 ok(`kernel runtime ready: .kernel-dist/${runtime} + ${sidecar}`);
-console.log("\nNext: `pnpm run bundle:runtime -- --with-kernel` then `pnpm tauri:build:full`\n");
+console.log("\nNext: `pnpm tauri:build` (staging runs automatically, then bundles the kernel)\n");

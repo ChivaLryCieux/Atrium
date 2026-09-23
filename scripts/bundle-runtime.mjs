@@ -4,21 +4,20 @@
  * Atrium // Desktop Runtime Staging
  *
  * Stages everything `tauri build` bundles as resources (see
- * `bundle.resources` in src-tauri/tauri.conf.json) so the packaged app can
- * boot the real DeepSeek Harness kernel:
+ * `bundle.resources` in src-tauri/tauri.conf.json, plus the kernel mapping in
+ * src-tauri/tauri.build.conf.json) so the packaged app can boot the real
+ * DeepSeek Harness kernel:
  *
  *   resources/bridge/index.cjs          self-contained kernel bridge (esbuild, ws bundled)
  *   resources/cordis/                   Cordis persona overlay patches
  *   resources/node/                     bundled node runtime (node.exe + license)
- *   resources/kernel/                   vendored deepseek-harness runtime tree
+ *   resources/kernel/                   packaged single-file dsh runtime + ripgrep sidecar
  *   resources/kernel-manifest.json      staging metadata
  *
- * Modes:
- *   pnpm run bundle:runtime               light: no kernel; the app degrades to
- *                                         the direct-API fallback at runtime
- *   pnpm run bundle:runtime -- --with-kernel
- *                                         heavy: also stages deepseek-harness/
- *                                         (~1.2 GB tree; release builds only)
+ * The dsh kernel is always staged — the product ships with the kernel or it
+ * does not ship. A staged kernel that is missing the build product
+ * (`.kernel-dist/`) fails the staging instead of silently producing a
+ * kernel-less build; run `pnpm run build:kernel-exe` first.
  */
 
 import { execFileSync, spawnSync } from "node:child_process";
@@ -29,16 +28,6 @@ import { createRequire } from "node:module";
 
 const ROOT_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const STAGE_DIR = resolve(ROOT_DIR, "src-tauri/resources");
-//   --with-kernel   stage the packaged single-file kernel runtime
-//   --light         force the kernel out of the staged resources
-//   (default)       auto: keep an already-staged kernel, otherwise stage light
-//                   — this is what beforeBuildCommand runs, so a distribution
-//                   build does not wipe the kernel staged just before it
-const MODE = process.argv.includes("--with-kernel")
-  ? "kernel"
-  : process.argv.includes("--light")
-    ? "light"
-    : "auto";
 
 const DSH_DIR = resolve(ROOT_DIR, "deepseek-harness");
 const SDK_CLIENT_SOURCE_FALLBACK = join(DSH_DIR, "packages", "sdk", "client", "lib", "index.js");
@@ -88,9 +77,9 @@ function stageDir(...parts) {
 /**
  * Robust recursive delete for staged/installed trees. Two Windows traps, both
  * hit for real: `fs.rm` with `force: true` silently swallows the failures that
- * long paths and locked files produce (once leaving a 200k-file kernel tree
- * behind while the script reported "light mode"), and even a correct delete is
- * slow because NTFS metadata work plus Defender scanning dominate. So: mirror
+ * long paths and locked files produce (once leaving a 200k-file tree behind
+ * while the script reported success), and even a correct delete is slow
+ * because NTFS metadata work plus Defender scanning dominate. So: mirror
  * from an empty directory with robocopy (multithreaded bulk delete) and verify.
  */
 function removeTree(dir) {
@@ -137,16 +126,14 @@ if (!existsSync(CORDIS_PATCH)) fail(`cordis patch missing: ${CORDIS_PATCH}`);
 // into the bridge keeps packaged installs free of any kernel source tree.
 const SDK_CLIENT_SOURCE = join(DSH_DIR, "packages", "sdk", "client", "lib", "index.js");
 
-if (MODE === "kernel") {
-  if (!existsSync(KERNEL_DIST)) {
-    fail(
-      `kernel runtime not built: ${KERNEL_DIST} is missing.\n` +
-        "        Run `pnpm run build:kernel-exe` first (builds upstream's single-file runtime).",
-    );
-  }
-  if (!existsSync(SDK_CLIENT_SOURCE)) {
-    fail(`SDK client source missing: ${SDK_CLIENT_SOURCE} (is the vendored checkout present?)`);
-  }
+if (!existsSync(KERNEL_DIST)) {
+  fail(
+    `kernel runtime not built: ${KERNEL_DIST} is missing.\n` +
+      "        Run `pnpm run build:kernel-exe` first (builds upstream's single-file runtime).",
+  );
+}
+if (!existsSync(SDK_CLIENT_SOURCE)) {
+  fail(`SDK client source missing: ${SDK_CLIENT_SOURCE} (is the vendored checkout present?)`);
 }
 
 // 2. Bridge bundle (self-contained; `ws` is the only non-builtin import) ---
@@ -201,7 +188,7 @@ if (existsSync(nodeLicense)) {
 }
 ok(`node runtime staged (${process.version})`);
 
-// 5. Kernel payload (opt-in) ----------------------------------------------
+// 5. Kernel payload (mandatory) --------------------------------------------
 //
 // The kernel ships as upstream's packaged single-file runtime — one ~250 MB
 // executable with Node 24 and the whole closure embedded — plus its `-rg`
@@ -213,51 +200,30 @@ ok(`node runtime staged (${process.version})`);
 // also poisons `tauri dev` through the crate's dep-info. Do not reintroduce it.
 
 const kernelOut = stageDir("kernel");
-// A staged single-file runtime marks the kernel as present.
-const kernelPresent = kernelRuntimeIn(kernelOut) !== null;
 
-if (MODE === "kernel") {
-  const products = readdirSync(KERNEL_DIST).filter((name) => name.endsWith(".exe"));
-  const runtime = products.find((name) => !name.endsWith("-rg.exe"));
-  const sidecar = products.find((name) => name.endsWith("-rg.exe"));
-  if (runtime === undefined) fail(`no kernel runtime exe found in ${KERNEL_DIST}`);
-  if (sidecar === undefined) {
-    fail(`ripgrep sidecar (-rg.exe) missing in ${KERNEL_DIST} — the runtime requires it beside the exe`);
-  }
-
-  removeTree(kernelOut);
-  mkdirSync(kernelOut, { recursive: true });
-  cpSync(join(KERNEL_DIST, runtime), join(kernelOut, runtime));
-  cpSync(join(KERNEL_DIST, sidecar), join(kernelOut, sidecar));
-  ok(`kernel runtime staged -> resources/kernel/ (2 files, ~${treeSizeMb(kernelOut)} MB)`);
-} else if (MODE === "auto" && kernelPresent) {
-  ok(`kernel already staged (auto mode) — keeping resources/kernel/ (~${treeSizeMb(kernelOut)} MB)`);
-} else {
-  // Light mode: the kernel resource is a placeholder ONLY. Leaving a previous
-  // staging here would be copied into target/debug by `tauri dev` and watched
-  // by its file watcher, so anything less than a full wipe is a hazard.
-  removeTree(kernelOut);
-  mkdirSync(kernelOut, { recursive: true });
-  writeFileSync(
-    join(kernelOut, "KERNEL_NOT_STAGED.txt"),
-    "Light-mode build: the DeepSeek Harness kernel was not bundled.\n" +
-      "Build the runtime (`pnpm run build:kernel-exe`) and stage it with\n" +
-      "`pnpm run bundle:runtime -- --with-kernel` to embed it.\n",
-  );
-  info("light mode: kernel NOT staged (direct-API fallback stays active)");
+const products = readdirSync(KERNEL_DIST).filter((name) => name.endsWith(".exe"));
+const runtime = products.find((name) => !name.endsWith("-rg.exe"));
+const sidecar = products.find((name) => name.endsWith("-rg.exe"));
+if (runtime === undefined) fail(`no kernel runtime exe found in ${KERNEL_DIST}`);
+if (sidecar === undefined) {
+  fail(`ripgrep sidecar (-rg.exe) missing in ${KERNEL_DIST} — the runtime requires it beside the exe`);
 }
 
-// 6. Manifest --------------------------------------------------------------
+removeTree(kernelOut);
+mkdirSync(kernelOut, { recursive: true });
+cpSync(join(KERNEL_DIST, runtime), join(kernelOut, runtime));
+cpSync(join(KERNEL_DIST, sidecar), join(kernelOut, sidecar));
+ok(`kernel runtime staged -> resources/kernel/ (2 files, ~${treeSizeMb(kernelOut)} MB)`);
 
-const kernelBundled = MODE === "kernel" ? true : kernelPresent;
+// 6. Manifest --------------------------------------------------------------
 
 writeFileSync(
   join(STAGE_DIR, "kernel-manifest.json"),
   JSON.stringify(
     {
-      kernelStaged: kernelBundled,
-      kernelPayload: kernelBundled ? "single-file-runtime" : null,
-      kernelRuntime: kernelBundled ? kernelRuntimeIn(kernelOut) : null,
+      kernelStaged: true,
+      kernelPayload: "single-file-runtime",
+      kernelRuntime: kernelRuntimeIn(kernelOut),
       nodeVersion: process.version,
       stagedAt: new Date().toISOString(),
     },
@@ -266,7 +232,7 @@ writeFileSync(
   ),
 );
 
-console.log(`\n\x1b[32m[READY] runtime staged under src-tauri/resources/ (${kernelBundled ? "with" : "without"} kernel)\x1b[0m\n`);
+console.log("\n\x1b[32m[READY] runtime staged under src-tauri/resources/ (dsh kernel embedded)\x1b[0m\n");
 
 function treeSizeMb(dir) {
   let total = 0;
