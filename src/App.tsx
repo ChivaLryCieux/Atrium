@@ -1,18 +1,12 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { TopBar } from "./components/TopBar";
 import { Sidebar, TaskSummary } from "./components/Sidebar";
 import { CenterHome } from "./components/CenterHome";
-import { SettingsView } from "./components/SettingsView";
-import { ProjectDialog } from "./components/ProjectDialog";
-import { SoulManagerDialog } from "./components/SoulManagerDialog";
-import { AboutDialog } from "./components/AboutDialog";
-import { GitSourceControlPanel } from "./components/GitSourceControlPanel";
 import { PromptCard } from "./components/PromptCard";
-import { TerminalPanel, TerminalSession } from "./components/TerminalPanel";
+import type { TerminalSession } from "./components/TerminalPanel";
 import { PanelResizer } from "./components/PanelResizer";
-import { Grainient } from "./components/Grainient";
 import { StageTelemetryHud } from "./components/StageTelemetryHud";
 import { MessageStream } from "./components/MessageStream";
 import { useToast } from "./components/Toast";
@@ -39,7 +33,21 @@ import type { ThemeMode } from "./themes";
 import { useTranslation } from "react-i18next";
 import i18n, { setAppLocale } from "./locales";
 import { COMMANDS, matchesShortcut } from "./commands/registry";
-import { CommandPalette } from "./components/CommandPalette";
+
+// ── Heavy / rarely-visible panels: lazy-split so three/ogl/xterm/md ──
+// ── stay out of the initial bundle (paired with manualChunks).     ──
+const SettingsView = lazy(() => import("./components/SettingsView").then((m) => ({ default: m.SettingsView })));
+const GitSourceControlPanel = lazy(() =>
+  import("./components/GitSourceControlPanel").then((m) => ({ default: m.GitSourceControlPanel })),
+);
+const TerminalPanel = lazy(() => import("./components/TerminalPanel").then((m) => ({ default: m.TerminalPanel })));
+const Grainient = lazy(() => import("./components/Grainient").then((m) => ({ default: m.Grainient })));
+const ProjectDialog = lazy(() => import("./components/ProjectDialog").then((m) => ({ default: m.ProjectDialog })));
+const SoulManagerDialog = lazy(() =>
+  import("./components/SoulManagerDialog").then((m) => ({ default: m.SoulManagerDialog })),
+);
+const AboutDialog = lazy(() => import("./components/AboutDialog").then((m) => ({ default: m.AboutDialog })));
+const CommandPalette = lazy(() => import("./components/CommandPalette").then((m) => ({ default: m.CommandPalette })));
 
 export function App() {
   const { t } = useTranslation();
@@ -1040,14 +1048,16 @@ export function App() {
       />
 
       {currentView === "settings" && settings ? (
-        <SettingsView
-          onBack={() => setCurrentView("workspace")}
-          settings={settings}
-          onSaveSettings={handleSaveSettings}
-          onClearHistory={handleClearHistory}
-          workspacePath={workspacePath}
-          onOpenWorkspace={handleOpenWorkspace}
-        />
+        <Suspense fallback={null}>
+          <SettingsView
+            onBack={() => setCurrentView("workspace")}
+            settings={settings}
+            onSaveSettings={handleSaveSettings}
+            onClearHistory={handleClearHistory}
+            workspacePath={workspacePath}
+            onOpenWorkspace={handleOpenWorkspace}
+          />
+        </Suspense>
       ) : (
         /* Main Workspace Body */
         <div className="workspace-body">
@@ -1086,13 +1096,15 @@ export function App() {
           {/* Source Control Secondary Sidebar (VS Code Style) */}
           {activeGitProjectId && (
             <>
-              <GitSourceControlPanel
-                projectId={activeGitProjectId}
-                project={projects.find((p) => p.id === activeGitProjectId)}
-                workspacePath={workspacePath}
-                width={gitPanelWidth}
-                onClose={() => setActiveGitProjectId(null)}
-              />
+              <Suspense fallback={null}>
+                <GitSourceControlPanel
+                  projectId={activeGitProjectId}
+                  project={projects.find((p) => p.id === activeGitProjectId)}
+                  workspacePath={workspacePath}
+                  width={gitPanelWidth}
+                  onClose={() => setActiveGitProjectId(null)}
+                />
+              </Suspense>
               <PanelResizer
                 orientation="vertical"
                 onResize={handleResizeGitPanel}
@@ -1105,16 +1117,17 @@ export function App() {
           <div className="main-stage-column">
             {/* Center Stage Canvas */}
             <main className="stage-container">
-              <Grainient
-                className="stage-marble-bg"
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  width: "100%",
-                  height: "100%",
-                  pointerEvents: "none",
-                  zIndex: 0,
-                }}
+              <Suspense fallback={null}>
+                <Grainient
+                  className="stage-marble-bg"
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    width: "100%",
+                    height: "100%",
+                    pointerEvents: "none",
+                    zIndex: 0,
+                  }}
                 color1="#dfceaf"
                 color2="#D4A26A"
                 color3="#5C4A3E"
@@ -1137,7 +1150,8 @@ export function App() {
                 centerX={0}
                 centerY={0}
                 zoom={0.9}
-              />
+                />
+              </Suspense>
               <StageTelemetryHud
                 messages={messages}
                 selectedModel={selectedModel}
@@ -1210,16 +1224,18 @@ export function App() {
                   onResize={(delta) => handleResizeTerminal(-delta)}
                   onReset={handleResetTerminal}
                 />
-                <TerminalPanel
-                  terminals={terminals}
-                  activeId={activeTerminalId ?? terminals[terminals.length - 1]?.id ?? null}
-                  cwd={terminalCwd}
-                  height={terminalHeight}
-                  onSelect={setActiveTerminalId}
-                  onCreated={handleTerminalCreated}
-                  onClosed={handleTerminalClosed}
-                  onCloseTerminal={handleCloseOneTerminal}
-                />
+                <Suspense fallback={null}>
+                  <TerminalPanel
+                    terminals={terminals}
+                    activeId={activeTerminalId ?? terminals[terminals.length - 1]?.id ?? null}
+                    cwd={terminalCwd}
+                    height={terminalHeight}
+                    onSelect={setActiveTerminalId}
+                    onCreated={handleTerminalCreated}
+                    onClosed={handleTerminalClosed}
+                    onCloseTerminal={handleCloseOneTerminal}
+                  />
+                </Suspense>
               </>
             )}
           </div>
@@ -1228,56 +1244,66 @@ export function App() {
 
       {/* Project create / settings dialog */}
       {projectDialog && (
-        <ProjectDialog
-          mode={projectDialog.mode}
-          project={
-            projectDialog.mode === "edit"
-              ? projects.find((p) => p.id === projectDialog.projectId) ?? null
-              : null
-          }
-          fallbackDirectory={workspacePath}
-          isLastProject={projects.length <= 1}
-          fallbackProjectName={projects.find((p) => p.id !== projectDialog.projectId)?.name}
-          onClose={() => setProjectDialog(null)}
-          onSaved={handleProjectSaved}
-          onDeleted={handleProjectDeleted}
-        />
+        <Suspense fallback={null}>
+          <ProjectDialog
+            mode={projectDialog.mode}
+            project={
+              projectDialog.mode === "edit"
+                ? projects.find((p) => p.id === projectDialog.projectId) ?? null
+                : null
+            }
+            fallbackDirectory={workspacePath}
+            isLastProject={projects.length <= 1}
+            fallbackProjectName={projects.find((p) => p.id !== projectDialog.projectId)?.name}
+            onClose={() => setProjectDialog(null)}
+            onSaved={handleProjectSaved}
+            onDeleted={handleProjectDeleted}
+          />
+        </Suspense>
       )}
 
       {/* Souls (persona) manager */}
       {isSoulDialogOpen && (
-        <SoulManagerDialog
-          souls={souls}
-          activeSoul={activeSoulFolder}
-          onActivate={handleActivateSoul}
-          onChanged={handleSoulsChanged}
-          onDeleted={handleSoulDeleted}
-          onClose={() => setIsSoulDialogOpen(false)}
-        />
+        <Suspense fallback={null}>
+          <SoulManagerDialog
+            souls={souls}
+            activeSoul={activeSoulFolder}
+            onActivate={handleActivateSoul}
+            onChanged={handleSoulsChanged}
+            onDeleted={handleSoulDeleted}
+            onClose={() => setIsSoulDialogOpen(false)}
+          />
+        </Suspense>
       )}
 
       {/* About / Charter Modal (question-mark button · Ctrl+K palette entry) */}
-      {isAboutOpen && <AboutDialog onClose={() => setIsAboutOpen(false)} />}
+      {isAboutOpen && (
+        <Suspense fallback={null}>
+          <AboutDialog onClose={() => setIsAboutOpen(false)} />
+        </Suspense>
+      )}
 
       {/* Command Center (Ctrl+K / Ctrl+Shift+P) */}
       {isPaletteOpen && (
-        <CommandPalette
-          onClose={() => setIsPaletteOpen(false)}
-          commands={availableCommands}
-          tasks={paletteTasks}
-          projects={projects.map((p) => ({ id: p.id, name: p.name }))}
-          activeTaskId={activeSessionId}
-          activeProjectId={activeProjectId}
-          onRunCommand={(id) => commandActions[id]?.()}
-          onSelectTask={(id) => {
-            setCurrentView("workspace");
-            void handleSelectSession(id);
-          }}
-          onSelectProject={(id) => {
-            setCurrentView("workspace");
-            setActiveProjectId(id);
-          }}
-        />
+        <Suspense fallback={null}>
+          <CommandPalette
+            onClose={() => setIsPaletteOpen(false)}
+            commands={availableCommands}
+            tasks={paletteTasks}
+            projects={projects.map((p) => ({ id: p.id, name: p.name }))}
+            activeTaskId={activeSessionId}
+            activeProjectId={activeProjectId}
+            onRunCommand={(id) => commandActions[id]?.()}
+            onSelectTask={(id) => {
+              setCurrentView("workspace");
+              void handleSelectSession(id);
+            }}
+            onSelectProject={(id) => {
+              setCurrentView("workspace");
+              setActiveProjectId(id);
+            }}
+          />
+        </Suspense>
       )}
     </div>
   );
