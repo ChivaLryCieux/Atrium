@@ -277,13 +277,30 @@ pub async fn probe_provider(
         return Err("API 地址为空".to_string());
     }
 
-    // Anthropic authenticates with x-api-key + a version header; everything
-    // else uses bearer tokens.
+    // Anthropic authenticates with x-api-key + a version header, and lists
+    // models under the `/v1` namespace of the same API root rather than beside
+    // it — the same rule `dsh-llm-deepseek`'s `messagesApiRoot` applies when it
+    // builds the Messages URL. Probing `<root>/models` instead returns 404 and
+    // makes a perfectly good Anthropic endpoint look dead.
+    let anthropic = api_protocol.trim() == "anthropic-messages";
+    let base = if anthropic && !base.ends_with("/v1") {
+        format!("{base}/v1")
+    } else {
+        base.to_string()
+    };
+    // The page size is the documented maximum; this is a liveness probe, not a
+    // full catalog import, and the reply is never followed to a second page.
+    let url = if anthropic {
+        format!("{base}/models?limit=1000")
+    } else {
+        format!("{base}/models")
+    };
+
     let mut request = state
         .http
-        .get(format!("{base}/models"))
+        .get(url)
         .timeout(std::time::Duration::from_secs(10));
-    request = if api_protocol.trim() == "anthropic-messages" {
+    request = if anthropic {
         request
             .header("x-api-key", api_key.trim())
             .header("anthropic-version", "2023-06-01")
@@ -299,6 +316,8 @@ pub async fn probe_provider(
     let status = response.status();
     if status.is_success() {
         let body = response.text().await.unwrap_or_default();
+        // Both listing dialects answer with a `data` array; the count is a
+        // hint, so an unexpected shape simply omits it.
         let count = serde_json::from_str::<serde_json::Value>(&body)
             .ok()
             .and_then(|v| v.get("data").and_then(|d| d.as_array()).map(|a| a.len()))

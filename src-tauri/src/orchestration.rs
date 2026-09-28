@@ -35,7 +35,7 @@ use crate::models::{
 // the fingerprint differs. Soul switches mid-task intentionally do NOT
 // re-inject: the newly selected persona takes effect on the next task.
 //
-// Fingerprint fields mirror the bridge routeKey exactly (provider,
+// Fingerprint fields mirror the bridge routeKey exactly (provider, protocol,
 // model, reasoning, credential hash, base URL, workspace): anything
 // that changes the bridge runtime/session binding must change this
 // fingerprint as well.
@@ -187,15 +187,16 @@ pub async fn execute(
         .filter(|m| matches!(*m, "plan" | "ask" | "auto"))
         .map(str::to_string);
 
-    // The kernel's deepseek-official provider speaks the OpenAI-compatible
-    // wire protocol only; other protocols stay on the direct route, which
-    // implements them natively (Anthropic Messages / OpenAI Responses).
+    // Which profiles the kernel route can serve at all. `dsh-llm-deepseek`
+    // implements exactly two wire protocols — Anthropic Messages and
+    // Chat Completions — so those two route through the kernel, with the
+    // protocol itself forwarded (see `KernelTurnRequest::api_protocol`) so the
+    // kernel's own row speaks the one the profile declares. OpenAI Responses
+    // has no kernel implementation and stays on the direct route, which
+    // implements it natively.
     let kernel_compatible = profiles
         .first()
-        .map(|p| {
-            let protocol = p.api_protocol.trim();
-            protocol.is_empty() || protocol == "openai-chat"
-        })
+        .map(|p| matches!(p.api_protocol.trim(), "" | "openai-chat" | "anthropic-messages"))
         .unwrap_or(false);
 
     let kernel_ready = if !kernel_compatible {
@@ -250,8 +251,15 @@ struct KernelTurnRequest {
     provider: String,
     model: String,
     api_key: String,
-    /// Bare base URL for the kernel provider (DEEPSEEK_BASE_URL); the kernel
-    /// appends `/chat/completions` itself, so full endpoints are reduced.
+    /// The profile's wire protocol, so the bridge can configure the kernel's
+    /// own `llm-deepseek` row for this route instead of inheriting whatever the
+    /// composition ships. `anthropic-messages` and `openai-chat` are the two
+    /// the kernel adapter can serve.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    api_protocol: Option<String>,
+    /// Endpoint root for the kernel provider (DEEPSEEK_BASE_URL), already
+    /// reduced by `kernel_base_url`: the kernel appends the protocol's own
+    /// resource path, so a stored `…/v1/messages` must arrive as `…`.
     #[serde(skip_serializing_if = "Option::is_none")]
     base_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -544,18 +552,36 @@ fn latest_user_input(messages: &[ChatMessage]) -> String {
         .unwrap_or_default()
 }
 
-/// Reduce a user-configured chat endpoint to the bare base URL the kernel
-/// provider expects: it appends `/chat/completions` itself, so a stored
-/// endpoint of `https://host/v1/chat/completions` must become
-/// `https://host/v1`, while already-bare entries pass through unchanged.
-fn normalize_base_url(endpoint: &str) -> Option<String> {
+/// Reduce a profile's stored inference endpoint to the API root the kernel
+/// provider expects, for the protocol that endpoint actually speaks.
+///
+/// The endpoint is always persisted complete (base + protocol suffix), while
+/// the kernel wants the root and appends the protocol's own resource path:
+/// `dsh-llm-deepseek` resolves `<root>/v1/messages` for Messages (adding the
+/// `/v1` namespace itself when the root does not already end in it, per its
+/// `messagesApiRoot`) and `<root>/chat/completions` for Chat Completions.
+///
+/// Without the per-protocol strip an Anthropic endpoint such as
+/// `https://gateway.example/anthropic/v1/messages` would reach the kernel
+/// verbatim and be requested again as `…/v1/messages/v1/messages`.
+fn kernel_base_url(endpoint: &str, api_protocol: &str) -> Option<String> {
     let trimmed = endpoint.trim().trim_end_matches('/');
     if trimmed.is_empty() {
         return None;
     }
-    let base = trimmed
-        .strip_suffix("/chat/completions")
-        .or_else(|| trimmed.strip_suffix("/responses"))
+    // Strip order matters, and so does what is *not* stripped: a suffix is
+    // only removed when the remainder is still a usable root for the declared
+    // protocol. Chat Completions therefore leaves `/v1/messages` alone — that
+    // `/v1` is the route's own base, and removing it would turn
+    // `https://host/v1` into `https://host`.
+    let suffixes: &[&str] = match api_protocol.trim() {
+        "anthropic-messages" => &["/v1/messages", "/messages"],
+        "openai-responses" => &["/responses"],
+        _ => &["/chat/completions", "/responses"],
+    };
+    let base = suffixes
+        .iter()
+        .find_map(|suffix| trimmed.strip_suffix(suffix))
         .unwrap_or(trimmed)
         .trim_end_matches('/')
         .to_string();
@@ -627,7 +653,8 @@ async fn execute_dag_kernel(
             provider: "deepseek-official".to_string(),
             model: stage.profile.model.clone(),
             api_key: stage.profile.api_key.clone(),
-            base_url: normalize_base_url(&stage.profile.endpoint),
+            api_protocol: Some(stage.profile.api_protocol.trim().to_string()),
+            base_url: kernel_base_url(&stage.profile.endpoint, &stage.profile.api_protocol),
             reasoning_effort: reasoning_effort.clone(),
             workspace: workspace.clone(),
             execution_mode: execution_mode.clone(),
@@ -753,20 +780,24 @@ fn has_settled_assistant(messages: &[ChatMessage]) -> bool {
         .any(|m| m.role == "assistant" && !m.pending && !m.error)
 }
 
-/// Route fingerprint mirroring the bridge `routeKey` (provider, model,
-/// reasoning, credential, base URL, workspace). The Soul content is
-/// deliberately excluded: switching persona mid-task must NOT reseed.
+/// Route fingerprint mirroring the bridge `routeKey` (provider, protocol,
+/// model, reasoning, credential, base URL, workspace). The protocol is in
+/// both because it is what selects the kernel runtime and its session
+/// binding: the same model and base URL speak two different request shapes.
+/// The Soul content is deliberately excluded: switching persona mid-task must
+/// NOT reseed.
 fn single_route_fingerprint(
     profile: &AiProfile,
     reasoning_effort: Option<&str>,
     workspace: Option<&str>,
 ) -> String {
     format!(
-        "deepseek-official|{}|{}|{}|{}|{}",
+        "deepseek-official|{}|{}|{}|{}|{}|{}",
+        profile.api_protocol.trim(),
         profile.model.trim(),
         reasoning_effort.unwrap_or_default().trim(),
         profile.api_key.trim(),
-        normalize_base_url(&profile.endpoint).unwrap_or_default(),
+        kernel_base_url(&profile.endpoint, &profile.api_protocol).unwrap_or_default(),
         workspace.unwrap_or_default().trim(),
     )
 }
@@ -945,7 +976,8 @@ async fn execute_single_kernel(
         provider: "deepseek-official".to_string(),
         model: profile.model.clone(),
         api_key: profile.api_key.clone(),
-        base_url: normalize_base_url(&profile.endpoint),
+        api_protocol: Some(profile.api_protocol.trim().to_string()),
+        base_url: kernel_base_url(&profile.endpoint, &profile.api_protocol),
         reasoning_effort,
         workspace,
         execution_mode,
@@ -1075,7 +1107,8 @@ async fn execute_parallel_kernel(
             provider: "deepseek-official".to_string(),
             model: profile.model.clone(),
             api_key: profile.api_key.clone(),
-            base_url: normalize_base_url(&profile.endpoint),
+            api_protocol: Some(profile.api_protocol.trim().to_string()),
+            base_url: kernel_base_url(&profile.endpoint, &profile.api_protocol),
             reasoning_effort: reasoning_effort.clone(),
             workspace: workspace.clone(),
             execution_mode: execution_mode.clone(),
@@ -1371,3 +1404,80 @@ async fn execute_parallel(
         })
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::kernel_base_url;
+
+    /// A profile's stored endpoint is always complete (base + protocol
+    /// suffix), while the kernel wants the root and rebuilds the path itself.
+    /// These pin the round trip for both protocols the kernel can serve,
+    /// including the Anthropic root that already carries `/v1`.
+    #[test]
+    fn reduces_endpoint_to_the_roots_the_kernel_rebuilds() {
+        // Anthropic Messages: the kernel appends `/v1/messages`, adding the
+        // `/v1` namespace itself when the root does not already end in it.
+        for (endpoint, expected) in [
+            (
+                "https://api.deepseek.com/anthropic/v1/messages",
+                "https://api.deepseek.com/anthropic",
+            ),
+            (
+                "https://api.deepseek.com/anthropic",
+                "https://api.deepseek.com/anthropic",
+            ),
+            // Already versioned: kept as the root, so never `/v1/v1`.
+            ("https://gateway.example/v1", "https://gateway.example/v1"),
+            // A deployment path prefix stays part of the root, and the
+            // version segment is re-added by the kernel: `/tenant` resolves
+            // back to `/tenant/v1/messages`, so `/tenant/v1` would be right
+            // only as a base the operator typed without the suffix.
+            (
+                "https://gateway.example/tenant/v1/messages",
+                "https://gateway.example/tenant",
+            ),
+            // A trailing slash is noise, never part of the root.
+            (
+                "https://gateway.example/anthropic/",
+                "https://gateway.example/anthropic",
+            ),
+        ] {
+            assert_eq!(
+                kernel_base_url(endpoint, "anthropic-messages").as_deref(),
+                Some(expected),
+                "anthropic: {endpoint}"
+            );
+        }
+
+        // Chat Completions: the kernel appends `/chat/completions`.
+        for (endpoint, expected) in [
+            ("https://host/v1/chat/completions", "https://host/v1"),
+            ("https://host/v1", "https://host/v1"),
+            // A Messages path under a Chat profile is a profile whose stored
+            // endpoint disagrees with its own protocol (storage reconciles
+            // these on load, so this is only a hand-edited config). It is
+            // left whole: its `/v1` is the base, not a version segment.
+            ("https://host/v1/messages", "https://host/v1/messages"),
+        ] {
+            assert_eq!(
+                kernel_base_url(endpoint, "openai-chat").as_deref(),
+                Some(expected),
+                "openai-chat: {endpoint}"
+            );
+        }
+    }
+
+    /// An endpoint with nothing to strip is already a root; one that is empty
+    /// or is nothing but a protocol suffix has no root to offer the kernel.
+    #[test]
+    fn bare_and_suffix_only_endpoints() {
+        assert_eq!(
+            kernel_base_url("https://host/v1/", "openai-chat").as_deref(),
+            Some("https://host/v1")
+        );
+        assert_eq!(kernel_base_url("  ", "openai-chat"), None);
+        assert_eq!(kernel_base_url("", "anthropic-messages"), None);
+        assert_eq!(kernel_base_url("/v1/messages", "anthropic-messages"), None);
+    }
+}
+
