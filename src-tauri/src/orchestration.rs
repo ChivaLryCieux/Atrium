@@ -187,16 +187,20 @@ pub async fn execute(
         .filter(|m| matches!(*m, "plan" | "ask" | "auto"))
         .map(str::to_string);
 
-    // Which profiles the kernel route can serve at all. `dsh-llm-deepseek`
-    // implements exactly two wire protocols — Anthropic Messages and
-    // Chat Completions — so those two route through the kernel, with the
-    // protocol itself forwarded (see `KernelTurnRequest::api_protocol`) so the
-    // kernel's own row speaks the one the profile declares. OpenAI Responses
-    // has no kernel implementation and stays on the direct route, which
-    // implements it natively.
+    // Which profiles the kernel route can serve at all. Between them the two
+    // kernel adapter families cover every protocol Atrium offers:
+    // `dsh-llm-deepseek` speaks Anthropic Messages and Chat Completions, and
+    // `dsh-llm-pi-ai` speaks OpenAI Responses. The profile's protocol is
+    // forwarded either way (see `KernelTurnRequest::api_protocol`) so the
+    // bridge can pick the adapter and configure its route.
     let kernel_compatible = profiles
         .first()
-        .map(|p| matches!(p.api_protocol.trim(), "" | "openai-chat" | "anthropic-messages"))
+        .map(|p| {
+            matches!(
+                p.api_protocol.trim(),
+                "" | "openai-chat" | "anthropic-messages" | "openai-responses"
+            )
+        })
         .unwrap_or(false);
 
     let kernel_ready = if !kernel_compatible {

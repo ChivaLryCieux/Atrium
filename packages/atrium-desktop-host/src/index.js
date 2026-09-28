@@ -152,34 +152,79 @@ const conversations = new Map()
 
 // ── Wire protocol ──────────────────────────────────────────────
 //
-// The kernel reaches the provider through `dsh-llm-deepseek`, which selects
-// its wire format from its own `llm-deepseek` composition row (see
-// packages/llm/llm-deepseek/src/config.ts). Atrium keeps that choice in the
-// operator's profile, so the turn request carries it and this bridge maps it
-// onto the kernel's vocabulary. A protocol the kernel cannot serve is
-// rejected here rather than silently spoken to the wrong endpoint: the row's
-// default (`messages`) would otherwise be used against a `/responses` base.
+// The kernel serves two LLM adapter families whose protocol sets are
+// disjoint, so a profile's protocol decides which one drives the route:
+//
+//   • `dsh-llm-deepseek` — Anthropic Messages and Chat Completions. Its
+//     protocol and endpoint come from its own `llm-deepseek` composition row
+//     (packages/llm/llm-deepseek/src/config.ts), so the bridge pins that row
+//     per route. This family also carries the DeepSeek-native features
+//     (session log, plugin inventory, Files API, DeepSeek web search), which
+//     is why the two mainstream protocols stay here.
+//   • `dsh-llm-pi-ai` — the multi-provider adapter, and the only one
+//     implementing OpenAI Responses. It mounts dormant and owns no routes
+//     until a settings document declares some, so a Responses route supplies
+//     a generated per-route document rather than a composition row.
+//
+// A protocol neither family serves is rejected here rather than silently
+// spoken to the wrong endpoint.
 
-/** Atrium profile protocol -> dsh `llm-deepseek` protocol. */
-const DSH_PROTOCOLS = {
-  'anthropic-messages': 'messages',
-  'openai-chat': 'chat-completions',
+/** Atrium profile protocol -> the kernel adapter and protocol that serve it. */
+const DSH_ROUTES = {
+  'anthropic-messages': { adapter: 'deepseek', protocol: 'messages' },
+  'openai-chat': { adapter: 'deepseek', protocol: 'chat-completions' },
+  'openai-responses': { adapter: 'pi-ai', protocol: 'openai-responses' },
 }
 
 /**
- * Resolve the kernel wire protocol for one turn.
- * @param {unknown} apiProtocol - `apiProtocol` from the turn request.
- * @returns {string|null} the dsh protocol, or null when the kernel cannot serve it.
+ * Credential reference a generated pi-ai route names. One variable serves every
+ * pi-ai route because each one runs in its own runtime process with its own
+ * environment; a per-route name would only add names nobody can address.
+ * It matches dsh's credential-ref grammar `^[A-Za-z_][A-Za-z0-9_]*$`.
  */
-function dshProtocol(apiProtocol) {
+const PI_AI_KEY_ENV = 'ATRIUM_ROUTE_API_KEY'
+
+/**
+ * Reasoning efforts a generated pi-ai route declares, as `[level, wire]`
+ * pairs: the level is what the harness selects, the wire spelling what goes on
+ * the wire. An empty wire is `null` — offered, sends nothing — which only `off`
+ * may be. `max` clamps to the Responses API's top effort, `high`.
+ *
+ * The list is both what the generated document declares and what a requested
+ * effort is checked against, so the two cannot drift.
+ */
+const PI_AI_EFFORTS = [
+  ['off', ''],
+  ['low', 'low'],
+  ['high', 'high'],
+  ['max', 'high'],
+]
+
+/**
+ * Resolve the kernel route for one turn.
+ * @param {unknown} apiProtocol - `apiProtocol` from the turn request.
+ * @returns {{adapter: string, protocol: string}|null} the route, or null when
+ *   no kernel adapter can serve the protocol.
+ */
+function dshRoute(apiProtocol) {
   const key = typeof apiProtocol === 'string' ? apiProtocol.trim() : ''
-  // An absent value keeps the kernel's own default, which is Messages.
-  if (key === '') return 'messages'
-  return DSH_PROTOCOLS[key] ?? null
+  // An absent value keeps the DeepSeek row's own default, which is Messages.
+  if (key === '') return DSH_ROUTES['anthropic-messages']
+  return DSH_ROUTES[key] ?? null
 }
 
 /** Cordis overlay directories generated per route, removed when the bridge exits. */
 const generatedPatchDirs = []
+
+// YAML single-quoted scalars: the only escape is '' for an embedded quote.
+const yamlScalar = value => `'${String(value).replace(/'/g, "''")}'`
+
+/** Create this route's scratch directory, tracked for removal on exit. */
+function routeDir() {
+  const dir = mkdtempSync(join(tmpdir(), 'atrium-route-'))
+  generatedPatchDirs.push(dir)
+  return dir
+}
 
 /**
  * Write the per-route composition overlay.
@@ -206,18 +251,15 @@ const generatedPatchDirs = []
 function writeRoutePatch(protocol, baseUrl) {
   const official = baseUrl === undefined || baseUrl.includes('api.deepseek.com')
   if (protocol === 'messages' && baseUrl === undefined && official) return null
-  const dir = mkdtempSync(join(tmpdir(), 'atrium-route-'))
-  generatedPatchDirs.push(dir)
+  const dir = routeDir()
   const path = join(dir, `llm-deepseek.${fingerprint(`${protocol}|${baseUrl ?? ''}`)}.cordis.patch.yml`)
-  // YAML single-quoted scalars: the only escape is '' for an embedded quote.
-  const scalar = value => `'${String(value).replace(/'/g, "''")}'`
   const lines = [
     '# Generated by @atrium/desktop-host — one route, one runtime.',
     '- id: llm-deepseek',
     '  config:',
-    `    protocol: ${scalar(protocol)}`,
+    `    protocol: ${yamlScalar(protocol)}`,
   ]
-  if (baseUrl !== undefined) lines.push(`    baseURL: ${scalar(baseUrl)}`)
+  if (baseUrl !== undefined) lines.push(`    baseURL: ${yamlScalar(baseUrl)}`)
   if (!official) {
     // `enabled: false` is each plugin's own documented off switch, and is the
     // whole config of these rows, so replacing it is complete.
@@ -225,6 +267,84 @@ function writeRoutePatch(protocol, baseUrl) {
       lines.push(`- id: ${id}`, '  config:', '    enabled: false')
     }
   }
+  writeFileSync(path, `${lines.join('\n')}\n`, 'utf8')
+  return path
+}
+
+/**
+ * The pi-ai route id for a Responses route. It doubles as a credential key
+ * segment, so it must match dsh's `^[a-z][a-z0-9-]*$`: lowercase, digits and
+ * dashes only, which the hex fingerprint satisfies.
+ * @param {string} protocol - the pi-ai protocol.
+ * @param {string|undefined} baseUrl - API root for the route.
+ * @param {string|undefined} model - model id for the route.
+ * @returns {string} the route id.
+ */
+function piAiRouteId(protocol, baseUrl, model) {
+  return `atrium-${fingerprint(`${protocol}|${baseUrl ?? ''}|${model ?? ''}`)}`
+}
+
+/**
+ * Write the per-route settings document a `dsh-llm-pi-ai` route serves from.
+ *
+ * `llm-pi-ai` owns no routes until an `llm-pi-ai:` section supplies provider
+ * profiles, and the file-backed settings provider resolves that document from
+ * `<dshHome>/settings.yaml` unless its own row names a path. The route pins
+ * that path (see {@link writePiAiPatch}) rather than writing into the
+ * operator's shared document, because one shared document cannot describe two
+ * concurrently live routes.
+ *
+ * The model entry declares reasoning levels because a hand-declared route has
+ * no installed catalog entry to inherit them from, and a request naming an
+ * effort the model does not offer fails with `UNSUPPORTED_REASONING_EFFORT`.
+ * The keys are exactly the efforts Atrium persists; the values are the wire
+ * spellings the Responses API accepts, where `max` clamps to its top effort.
+ *
+ * @param {string} routeId - the pi-ai route id.
+ * @param {string} protocol - the pi-ai protocol.
+ * @param {string|undefined} baseUrl - API root for the route.
+ * @param {string|undefined} model - model id for the route.
+ * @param {string} keyEnv - environment variable naming the route's key.
+ * @returns {string} the settings document path.
+ */
+function writePiAiSettings(routeId, protocol, baseUrl, model, keyEnv) {
+  const path = join(routeDir(), 'settings.yaml')
+  const lines = [
+    '# Generated by @atrium/desktop-host — one route, one runtime.',
+    'llm-pi-ai:',
+    '  providers:',
+    `    ${routeId}:`,
+    `      api: ${yamlScalar(protocol)}`,
+    `      apiKeyEnv: ${yamlScalar(keyEnv)}`,
+  ]
+  if (baseUrl !== undefined) lines.push(`      baseURL: ${yamlScalar(baseUrl)}`)
+  lines.push('      models:', `        - id: ${yamlScalar(model ?? '')}`, '          reasoningEfforts:')
+  for (const [level, wire] of PI_AI_EFFORTS) {
+    // An empty wire is written as a bare key, which YAML reads as `null`:
+    // the level is offered and sends nothing.
+    lines.push(wire === '' ? `            ${level}:` : `            ${level}: ${wire}`)
+  }
+  writeFileSync(path, `${lines.join('\n')}\n`, 'utf8')
+  return path
+}
+
+/**
+ * Write the per-route composition overlay for a `dsh-llm-pi-ai` route: the
+ * settings provider is pointed at this route's generated document. That row's
+ * `watch` and `debounceMs` keep their schema defaults (on, 100 ms), so
+ * replacing the whole `config` here is complete.
+ *
+ * @param {string} settingsPath - this route's generated settings document.
+ * @returns {string} the patch path.
+ */
+function writePiAiPatch(settingsPath) {
+  const path = join(routeDir(), 'llm-pi-ai.cordis.patch.yml')
+  const lines = [
+    '# Generated by @atrium/desktop-host — one route, one runtime.',
+    '- id: settings',
+    '  config:',
+    `    path: ${yamlScalar(settingsPath)}`,
+  ]
   writeFileSync(path, `${lines.join('\n')}\n`, 'utf8')
   return path
 }
@@ -245,12 +365,9 @@ const EXECUTION_MODE_SANDBOX = {
 }
 
 function routeKey(request) {
+  const route = dshRoute(request.apiProtocol)
   return [
-    request.provider ?? 'deepseek-official',
-    // The wire protocol is part of the route: the same base URL and model
-    // speak two different request shapes, and each shape needs its own
-    // runtime (and its own `llm-deepseek` composition row).
-    dshProtocol(request.apiProtocol) ?? 'unsupported',
+    route === null ? 'unsupported' : `${route.adapter}:${route.protocol}`,
     request.baseUrl ?? 'inherit',
     request.model ?? 'deepseek-flash',
     request.reasoningEffort ?? 'default',
@@ -267,19 +384,31 @@ function routeKey(request) {
  * a Node script; development boots the checkout's `dsh --profile sdk` instead.
  *
  * `patches` is the ordered overlay list: the static `--patch` files first, then
- * this route's generated `llm-deepseek` row, which must be last so the
- * operator's protocol and endpoint win over any shipped default.
+ * this route's generated row, which must be last so the operator's protocol and
+ * endpoint win over any shipped default.
+ *
+ * @param {object} request - the turn request.
+ * @param {object} childEnv - the complete environment for this runtime.
+ * @param {string} workspace - the runtime's working directory.
+ * @param {{adapter: string, protocol: string}} route - the resolved kernel route.
+ * @param {string} provider - the provider route the agent is created on.
+ * @param {string|undefined} reasoningEffort - effort the model declares, if any.
+ * @returns {DeepSeekHarness} the harness for this route.
  */
-function createHarness(request, childEnv, workspace, protocol) {
+function createHarness(request, childEnv, workspace, route, provider, reasoningEffort) {
   const shared = {
     cwd: workspace,
     processCwd: workspace,
-    provider: request.provider ?? 'deepseek-official',
+    provider,
     model: request.model ?? 'deepseek-flash',
-    ...(request.reasoningEffort ? { reasoningEffort: request.reasoningEffort } : {}),
+    ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
     initializeTimeoutMs: 60_000,
   }
-  const routePatch = writeRoutePatch(protocol, request.baseUrl)
+  // A pi-ai route is declared in a generated settings document rather than a
+  // composition row, and `provider` is that document's route id.
+  const routePatch = route.adapter === 'pi-ai'
+    ? writePiAiPatch(writePiAiSettings(provider, route.protocol, request.baseUrl, request.model, PI_AI_KEY_ENV))
+    : writeRoutePatch(route.protocol, request.baseUrl)
   const patches = routePatch === null ? args.patch : [...args.patch, routePatch]
 
   if (kernelMode === 'exe') {
@@ -312,11 +441,11 @@ function createHarness(request, childEnv, workspace, protocol) {
 }
 
 async function ensureHarness(request) {
-  const protocol = dshProtocol(request.apiProtocol)
-  if (protocol === null) {
+  const route = dshRoute(request.apiProtocol)
+  if (route === null) {
     throw new Error(
-      `dsh-llm-deepseek cannot speak protocol "${String(request.apiProtocol).trim()}";`
-      + ' the kernel serves anthropic-messages and openai-chat routes only.',
+      `no kernel adapter speaks protocol "${String(request.apiProtocol).trim()}";`
+      + ' the kernel serves anthropic-messages, openai-chat and openai-responses routes only.',
     )
   }
   const key = routeKey(request)
@@ -324,19 +453,29 @@ async function ensureHarness(request) {
   if (entry) return entry
 
   const childEnv = { ...process.env }
-  if (request.apiKey) childEnv.DEEPSEEK_API_KEY = request.apiKey
-  // The endpoint root for the kernel route: it appends the protocol's own
-  // resource path itself (`/v1/messages` for Messages, `/chat/completions` for
-  // Chat Completions), so the stored inference endpoint is reduced upstream.
-  if (request.baseUrl) {
-    childEnv.DEEPSEEK_BASE_URL = request.baseUrl
-    const isOfficial = !request.baseUrl || request.baseUrl.includes('api.deepseek.com')
-    if (!isOfficial) {
-      // Third-party provider (e.g. StepFun, Moonshot, a gateway, or a
-      // non-DeepSeek Anthropic endpoint): the shipped web search tool speaks
-      // DeepSeek's own Messages endpoint and its key, so pointing it at this
-      // route's base would 401 on every search.
-      childEnv.DEEPSEEK_SEARCH_BASE_URL = 'http://127.0.0.1:0'
+  // The DeepSeek adapter reads its own endpoint and key from the environment;
+  // the pi-ai adapter reads them from the route's generated settings document
+  // and its named reference. Both are per-runtime, so both are safe to set per
+  // route.
+  let provider = 'deepseek-official'
+  if (route.adapter === 'pi-ai') {
+    provider = piAiRouteId(route.protocol, request.baseUrl, request.model)
+    if (request.apiKey) childEnv[PI_AI_KEY_ENV] = request.apiKey
+  } else {
+    if (request.apiKey) childEnv.DEEPSEEK_API_KEY = request.apiKey
+    // The endpoint root for the kernel route: it appends the protocol's own
+    // resource path itself (`/v1/messages` for Messages, `/chat/completions` for
+    // Chat Completions), so the stored inference endpoint is reduced upstream.
+    if (request.baseUrl) {
+      childEnv.DEEPSEEK_BASE_URL = request.baseUrl
+      const isOfficial = !request.baseUrl || request.baseUrl.includes('api.deepseek.com')
+      if (!isOfficial) {
+        // Third-party provider (e.g. StepFun, Moonshot, a gateway, or a
+        // non-DeepSeek Anthropic endpoint): the shipped web search tool speaks
+        // DeepSeek's own Messages endpoint and its key, so pointing it at this
+        // route's base would 401 on every search.
+        childEnv.DEEPSEEK_SEARCH_BASE_URL = 'http://127.0.0.1:0'
+      }
     }
   }
   if (args.dshHome) childEnv.DSH_HOME = args.dshHome
@@ -344,21 +483,31 @@ async function ensureHarness(request) {
   if (sandboxMode) childEnv.DSH_PERMISSION_MODE = sandboxMode
 
   const workspace = request.workspace ?? WORKSPACE
+  // A model only accepts an effort its route declares; the generated pi-ai
+  // document declares exactly the four Atrium persists, so anything else here
+  // is stale and is dropped rather than failing the turn.
+  const declared = route.adapter === 'pi-ai' ? PI_AI_EFFORTS.map(([level]) => level) : undefined
+  const requested = request.reasoningEffort
+  const reasoningEffort = requested === undefined
+    || requested === ''
+    || (declared !== undefined && !declared.includes(requested))
+    ? undefined
+    : requested
 
-  const harness = createHarness(request, childEnv, workspace, protocol)
+  const harness = createHarness(request, childEnv, workspace, route, provider, reasoningEffort)
 
   entry = { harness, key }
   harnessPool.set(key, entry)
   broadcast({
     type: 'kernel-status',
     status: 'starting',
-    detail: `spawning dsh runtime for ${request.model ?? 'deepseek-flash'} over ${protocol}`,
+    detail: `spawning dsh runtime for ${request.model ?? 'deepseek-flash'} over ${route.protocol} (${route.adapter})`,
   })
   await harness.start()
   broadcast({
     type: 'kernel-status',
     status: 'ready',
-    detail: `dsh runtime ready (${request.model ?? 'deepseek-flash'}, ${protocol})`,
+    detail: `dsh runtime ready (${request.model ?? 'deepseek-flash'}, ${route.protocol} over ${route.adapter})`,
   })
   return entry
 }
