@@ -134,15 +134,6 @@ pub struct ChatMessage {
     pub reasoning_duration_ms: Option<u64>,
 }
 
-/// Wire format for OpenAI-compatible API (no camelCase needed).
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ApiMessage {
-    pub role: String,
-    pub content: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
-}
-
 // ─── Orchestration ─────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -187,31 +178,7 @@ pub struct OrchestrationProgress {
     pub message_id: Option<String>,
 }
 
-// ─── Chat Request / Response (for single API call) ─────────────
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ChatRequest {
-    pub profile: AiProfile,
-    pub messages: Vec<ApiMessage>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChatResponse {
-    pub content: String,
-}
-
-// ─── OpenAI response parsing helpers ───────────────────────────
-
-#[derive(Debug, Deserialize)]
-pub(crate) struct OpenAiChoice {
-    pub message: OpenAiMessage,
-}
-
-#[derive(Debug, Deserialize)]
-pub(crate) struct OpenAiMessage {
-    pub content: Option<serde_json::Value>,
-}
+// ─── OpenAI error parsing helper ───────────────────────────────
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct OpenAiErrorResponse {

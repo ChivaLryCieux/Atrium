@@ -44,7 +44,6 @@ pub fn run() {
             commands::clear_history,
             commands::create_profile,
             commands::delete_profile,
-            commands::send_chat,
             commands::execute_orchestration,
             commands::build_orchestration,
             commands::start_harness_daemon,

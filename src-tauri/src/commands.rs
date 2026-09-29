@@ -1,7 +1,7 @@
 use tauri::{AppHandle, State};
 
 use crate::models::{
-    AiProfile, AppSettings, ChatMessage, ChatRequest, ChatResponse, OrchestrationRequest, Project,
+    AiProfile, AppSettings, ChatMessage, OrchestrationRequest, Project,
 };
 use crate::orchestration;
 use crate::storage;
@@ -45,18 +45,6 @@ pub fn create_profile() -> AiProfile {
 #[tauri::command]
 pub fn delete_profile(app: AppHandle, profile_id: String) -> Result<AppSettings, String> {
     storage::delete_profile(&app, &profile_id)
-}
-
-// ─── Single chat call (kept for direct use) ────────────────────
-
-#[tauri::command]
-pub async fn send_chat(
-    state: State<'_, crate::AppState>,
-    request: ChatRequest,
-) -> Result<ChatResponse, String> {
-    crate::ai_client::send_chat(&state.http, &request.profile, &request.messages)
-        .await
-        .map_err(|err| err.to_string())
 }
 
 // ─── Orchestration ─────────────────────────────────────────────

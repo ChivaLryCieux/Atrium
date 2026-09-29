@@ -16,7 +16,6 @@ export interface ProtocolDefinition {
   /// Path appended to the base URL to form the inference endpoint.
   endpointSuffix: string;
   nameKey: string;
-  descriptionKey: string;
 }
 
 export const API_PROTOCOLS: readonly ProtocolDefinition[] = [
@@ -24,19 +23,16 @@ export const API_PROTOCOLS: readonly ProtocolDefinition[] = [
     id: "openai-chat",
     endpointSuffix: "/chat/completions",
     nameKey: "settings.protocolOpenaiChat",
-    descriptionKey: "settings.protocolOpenaiChatDesc",
   },
   {
     id: "openai-responses",
     endpointSuffix: "/responses",
     nameKey: "settings.protocolOpenaiResponses",
-    descriptionKey: "settings.protocolOpenaiResponsesDesc",
   },
   {
     id: "anthropic-messages",
     endpointSuffix: "/v1/messages",
     nameKey: "settings.protocolAnthropicMessages",
-    descriptionKey: "settings.protocolAnthropicMessagesDesc",
   },
 ];
 
