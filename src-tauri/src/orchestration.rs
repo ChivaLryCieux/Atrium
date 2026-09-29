@@ -7,9 +7,7 @@ use tauri::{AppHandle, Emitter};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
-use crate::ai_client::send_chat;
 use crate::daemon::DshDaemon;
-use crate::messages::to_api_messages;
 use crate::models::{
     AiProfile, ChatMessage, OrchestrationProgress, OrchestrationStage,
 };
@@ -133,39 +131,19 @@ pub fn build_stages(profiles: &[AiProfile]) -> Vec<OrchestrationStage> {
         .collect()
 }
 
-/// Append orchestration instructions to a profile's system prompt.
-pub fn with_stage_instruction(profile: &AiProfile, stage: &OrchestrationStage) -> AiProfile {
-    let base_prompt = profile.system_prompt.trim();
-    let orchestration_prompt = format!(
-        "[ATRIUM_HARNESS_DISPATCH]\n\
-         - 当前流水线节点: {}\n\
-         - 算子角色: {}\n\
-         - 调度执行指令: {}\n\
-         - 准则: 保持冷静、理性、高度结构化与工业级严谨，直接输出工程与技术解析，不暴露底座实现细节。",
-        stage.title, stage.role, stage.instruction,
-    );
-
-    let system_prompt = if base_prompt.is_empty() {
-        orchestration_prompt
-    } else {
-        format!("{base_prompt}\n\n{orchestration_prompt}")
-    };
-
-    AiProfile {
-        system_prompt,
-        ..profile.clone()
-    }
-}
 
 /// Execute the full orchestration pipeline and return the final message list.
 ///
-/// Preferred route: the Atrium kernel bridge (`@atrium/desktop-host`) driving a
+/// The only route is the Atrium kernel bridge (`@atrium/desktop-host`) driving a
 /// real DeepSeek Harness runtime — one kernel session per conversation, so
-/// multi-turn context is owned by the kernel and replies stream to the UI
-/// over its WebSocket.
+/// multi-turn context is owned by the kernel and replies stream to the UI over
+/// its WebSocket.
 ///
-/// Fallback route: direct OpenAI-compatible HTTP calls, used when the kernel
-/// bridge is unavailable (no Node, kernel not built, port probe failed).
+/// There is deliberately no direct-HTTP fallback. It answered with a
+/// stateless single turn that could not hold persona context, could not call a
+/// single tool, and therefore could not do anything an agent is for; silently
+/// degrading to it made a broken kernel look like a working chat. An
+/// unavailable kernel is reported to the user instead.
 pub async fn execute(
     app: &AppHandle,
     http: &Client,
@@ -179,7 +157,7 @@ pub async fn execute(
     execution_mode: Option<String>,
     project: Option<(&str, &str, Option<&str>)>,
     soul: Option<&str>,
-) -> Vec<ChatMessage> {
+) -> Result<Vec<ChatMessage>, String> {
     // Only kernel-recognized modes pass through; anything else uses the
     // runtime's shipped default (workspace-write + ask).
     let execution_mode = execution_mode
@@ -203,8 +181,10 @@ pub async fn execute(
         })
         .unwrap_or(false);
 
-    let kernel_ready = if !kernel_compatible {
-        false
+    // `(ready, why-not)` in one pass: the daemon lock is held only inside this
+    // block, and the detail is what the user sees when a turn cannot run.
+    let (kernel_ready, kernel_detail) = if !kernel_compatible {
+        (false, None)
     } else {
         let mut guard = daemon.lock().await;
         // Self-heal before routing: a bridge that died after startup
@@ -224,24 +204,42 @@ pub async fn execute(
             // initializing the bridge when the first message arrives.
             let _ = guard.start(http, app).await;
         }
-        guard.kernel_available()
+        (guard.kernel_available(), guard.kernel_detail().map(str::to_string))
     };
 
-    if kernel_ready {
-        let conversation = conversation_id.unwrap_or_else(|| format!("adhoc-{}", Uuid::new_v4()));
-        if mode == "parallel" {
-            execute_parallel_kernel(app, kernel_http, profiles, base_messages, &conversation, reasoning_effort, execution_mode, project, soul).await
-        } else if mode == "single" {
-            execute_single_kernel(app, kernel_http, profiles, base_messages, &conversation, reasoning_effort, execution_mode, project, soul).await
-        } else {
-            execute_dag_kernel(app, kernel_http, profiles, base_messages, &conversation, reasoning_effort, execution_mode, project, soul).await
-        }
-    } else if mode == "parallel" {
-        execute_parallel(http, profiles, base_messages, project, soul).await
+    if !kernel_ready {
+        return Err(kernel_unavailable_message(&profiles, kernel_detail.as_deref()));
+    }
+
+    let conversation = conversation_id.unwrap_or_else(|| format!("adhoc-{}", Uuid::new_v4()));
+    if mode == "parallel" {
+        Ok(execute_parallel_kernel(app, kernel_http, profiles, base_messages, &conversation, reasoning_effort, execution_mode, project, soul).await)
     } else if mode == "single" {
-        execute_single_direct(app, http, profiles, base_messages, project, soul).await
+        Ok(execute_single_kernel(app, kernel_http, profiles, base_messages, &conversation, reasoning_effort, execution_mode, project, soul).await)
     } else {
-        execute_dag(app, http, profiles, base_messages, project, soul).await
+        Ok(execute_dag_kernel(app, kernel_http, profiles, base_messages, &conversation, reasoning_effort, execution_mode, project, soul).await)
+    }
+}
+
+/// The user-facing reason a turn could not run, naming the cases an operator
+/// can actually act on: a protocol no kernel adapter speaks, and whatever the
+/// bridge last reported. Both used to disappear into a degraded direct reply.
+fn kernel_unavailable_message(profiles: &[AiProfile], kernel_detail: Option<&str>) -> String {
+    let protocol = profiles
+        .first()
+        .map(|p| p.api_protocol.trim())
+        .unwrap_or("");
+    if !matches!(
+        protocol,
+        "" | "openai-chat" | "anthropic-messages" | "openai-responses"
+    ) {
+        return format!(
+            "该 Provider 的 API 协议 {protocol} 没有对应的内核适配器，请在设置中改用 OpenAI Chat Completions、OpenAI Responses 或 Anthropic Messages"
+        );
+    }
+    match kernel_detail {
+        Some(detail) => format!("内核运行时不可用：{detail}"),
+        None => "内核运行时未就绪，请检查安装后重启 Atrium".to_string(),
     }
 }
 
@@ -838,90 +836,6 @@ fn single_kernel_prompt(
     prompt
 }
 
-/// Direct-API fallback for the single engine. The stateless HTTP channel
-/// cannot hold persona context, so the soul + system prompt travel as a
-/// real `system` role message on every turn; the kernel route above is
-/// the reference behaviour (seed once per task).
-async fn execute_single_direct(
-    app: &AppHandle,
-    http: &Client,
-    profiles: &[AiProfile],
-    base_messages: &[ChatMessage],
-    project: Option<(&str, &str, Option<&str>)>,
-    soul: Option<&str>,
-) -> Vec<ChatMessage> {
-    let Some(profile) = profiles.first() else {
-        return vec![];
-    };
-    let mut seeded = profile.clone();
-    let mut system = String::new();
-    if let Some(s) = soul.map(str::trim).filter(|s| !s.is_empty()) {
-        system.push_str(&format!("[人格设定]\n{s}\n\n"));
-    }
-    if !seeded.system_prompt.trim().is_empty() {
-        system.push_str(seeded.system_prompt.trim());
-    }
-    seeded.system_prompt = system;
-
-    let api_messages = to_api_messages(base_messages, Some(&seeded));
-    let start_time = std::time::Instant::now();
-    // Must equal the frontend single-mode pending id (`<profileId>-single`),
-    // otherwise settlement replaces the bubble by a stranger id and the
-    // merge drops the pending node (and any tokens streamed into it).
-    let message_id = format!("{}-single", profile.id);
-    match send_chat(http, &seeded, &api_messages).await {
-        Ok(response) => {
-            let latency = start_time.elapsed().as_millis() as u64;
-            let prompt_toks = crate::tokens::estimate_tokens(&seeded.system_prompt)
-                + api_messages
-                    .iter()
-                    .map(|m| crate::tokens::estimate_tokens(&m.content))
-                    .sum::<usize>();
-            let comp_toks = crate::tokens::estimate_tokens(&response.content);
-            crate::tokens::record_usage(
-                app,
-                &profile.model,
-                prompt_toks,
-                comp_toks,
-                latency,
-                project.map(|(id, name, _)| (id, name)),
-            );
-            vec![ChatMessage {
-                id: message_id,
-                role: "assistant".to_string(),
-                content: response.content,
-                speaker_id: Some(profile.id.clone()),
-                speaker_name: profile.name.clone(),
-                avatar: profile.avatar.clone(),
-                pending: false,
-                error: false,
-                prompt_tokens: Some(prompt_toks),
-                completion_tokens: Some(comp_toks),
-                latency_ms: Some(latency),
-                tool_calls: None,
-                reasoning_content: None,
-                reasoning_duration_ms: None,
-            }]
-        }
-        Err(err) => vec![ChatMessage {
-            id: message_id,
-            role: "assistant".to_string(),
-            content: err.to_string(),
-            speaker_id: Some(profile.id.clone()),
-            speaker_name: profile.name.clone(),
-            avatar: profile.avatar.clone(),
-            pending: false,
-            error: true,
-            prompt_tokens: None,
-            completion_tokens: None,
-            latency_ms: Some(start_time.elapsed().as_millis() as u64),
-            tool_calls: None,
-            reasoning_content: None,
-            reasoning_duration_ms: None,
-        }],
-    }
-}
-
 /// Default single-conversation kernel turn: one profile, one kernel
 /// session, persona seeded once per task (plus once per route change).
 async fn execute_single_kernel(
@@ -1186,228 +1100,6 @@ async fn execute_parallel_kernel(
 }
 
 // ─── Direct route (fallback, no kernel) ────────────────────────
-
-async fn execute_dag(
-    app: &AppHandle,
-    http: &Client,
-    profiles: &[AiProfile],
-    base_messages: &[ChatMessage],
-    project: Option<(&str, &str, Option<&str>)>,
-    soul: Option<&str>,
-) -> Vec<ChatMessage> {
-    let stages = build_stages(profiles);
-    let mut completed_replies: Vec<ChatMessage> = Vec::new();
-
-    for stage in &stages {
-        // Reply id must equal the frontend pending bubble id (`build_stages`
-        // formula `<profileId>-<index>`): the settlement merge matches replies
-        // to pending bubbles by id and drops unmatched pendings, which would
-        // discard tokens already streamed into them.
-        let message_id = stage.id.clone();
-
-        // Emit "running" progress
-        let _ = app.emit(
-            "orchestration-progress",
-            OrchestrationProgress {
-                stage_id: stage.id.clone(),
-                stage_title: stage.title.clone(),
-                profile_name: stage.profile.name.clone(),
-                status: "running".to_string(),
-                content: Some(format!("{} 正在处理...", stage.title)),
-                message_id: Some(message_id.clone()),
-            },
-        );
-
-        // Build context: base messages + all completed replies so far
-        let mut context: Vec<ChatMessage> = base_messages.to_vec();
-        context.extend(completed_replies.clone());
-
-        let soul_seeded_profile = match soul.map(str::trim).filter(|s| !s.is_empty()) {
-            Some(soul) => AiProfile {
-                system_prompt: format!("[人格设定]\n{soul}\n\n{}", stage.profile.system_prompt.trim()),
-                ..stage.profile.clone()
-            },
-            None => stage.profile.clone(),
-        };
-        let augmented_profile = with_stage_instruction(&soul_seeded_profile, stage);
-        let api_messages = to_api_messages(&context, Some(&augmented_profile));
-        let start_time = std::time::Instant::now();
-        let prompt_tokens = context.iter().map(|m| crate::tokens::estimate_tokens(&m.content)).sum::<usize>();
-
-        let timeout_fut = tokio::time::timeout(
-            std::time::Duration::from_secs(60),
-            send_chat(http, &augmented_profile, &api_messages),
-        );
-
-        let result = match timeout_fut.await {
-            Ok(inner_res) => inner_res,
-            Err(_) => Err(anyhow::anyhow!("节点执行超时 (60s 熔断保护)")),
-        };
-
-        let latency = start_time.elapsed().as_millis() as u64;
-
-        match result {
-            Ok(response) => {
-                let completion_tokens = crate::tokens::estimate_tokens(&response.content);
-                crate::tokens::record_usage(
-                    app,
-                    &stage.profile.model,
-                    prompt_tokens,
-                    completion_tokens,
-                    latency,
-                    project.map(|(id, name, _)| (id, name)),
-                );
-
-                let reply = ChatMessage {
-                    id: message_id,
-                    role: "assistant".to_string(),
-                    content: response.content,
-                    speaker_id: Some(stage.profile.id.clone()),
-                    speaker_name: format!("{} · {}", stage.title, stage.profile.name),
-                    avatar: stage.profile.avatar.clone(),
-                    pending: false,
-                    error: false,
-                    prompt_tokens: Some(prompt_tokens),
-                    completion_tokens: Some(completion_tokens),
-                    latency_ms: Some(latency),
-                    tool_calls: None,
-                    reasoning_content: None,
-                    reasoning_duration_ms: None,
-                };
-                completed_replies.push(reply.clone());
-
-                let _ = app.emit(
-                    "orchestration-progress",
-                    OrchestrationProgress {
-                        stage_id: stage.id.clone(),
-                        stage_title: stage.title.clone(),
-                        profile_name: stage.profile.name.clone(),
-                        status: "completed".to_string(),
-                        content: Some(reply.content),
-                        message_id: Some(reply.id),
-                    },
-                );
-            }
-            Err(err) => {
-                let reply = ChatMessage {
-                    id: message_id,
-                    role: "assistant".to_string(),
-                    content: err.to_string(),
-                    speaker_id: Some(stage.profile.id.clone()),
-                    speaker_name: format!("{} · {}", stage.title, stage.profile.name),
-                    avatar: stage.profile.avatar.clone(),
-                    pending: false,
-                    error: true,
-                    prompt_tokens: None,
-                    completion_tokens: None,
-                    latency_ms: Some(latency),
-                    tool_calls: None,
-                    reasoning_content: None,
-                    reasoning_duration_ms: None,
-                };
-                completed_replies.push(reply.clone());
-
-                let _ = app.emit(
-                    "orchestration-progress",
-                    OrchestrationProgress {
-                        stage_id: stage.id.clone(),
-                        stage_title: stage.title.clone(),
-                        profile_name: stage.profile.name.clone(),
-                        status: "error".to_string(),
-                        content: Some(err.to_string()),
-                        message_id: Some(reply.id),
-                    },
-                );
-            }
-        }
-    }
-
-    completed_replies
-}
-
-async fn execute_parallel(
-    http: &Client,
-    profiles: &[AiProfile],
-    base_messages: &[ChatMessage],
-    _project: Option<(&str, &str, Option<&str>)>,
-    soul: Option<&str>,
-) -> Vec<ChatMessage> {
-    let soul_seeded: Vec<AiProfile> = profiles
-        .iter()
-        .map(|profile| match soul.map(str::trim).filter(|s| !s.is_empty()) {
-            Some(soul) => AiProfile {
-                system_prompt: format!("[人格设定]\n{soul}\n\n{}", profile.system_prompt.trim()),
-                ..profile.clone()
-            },
-            None => profile.clone(),
-        })
-        .collect();
-
-    let api_messages_per_profile: Vec<_> = soul_seeded
-        .iter()
-        .map(|p| to_api_messages(base_messages, Some(p)))
-        .collect();
-
-    let futures: Vec<_> = soul_seeded
-        .iter()
-        .zip(api_messages_per_profile.iter())
-        .map(|(profile, api_msgs)| async move {
-            let result = send_chat(http, profile, api_msgs).await;
-            (profile, result)
-        })
-        .collect();
-
-    let results = futures::future::join_all(futures).await;
-
-    results
-        .into_iter()
-        .enumerate()
-        .map(|(index, (profile, result))| {
-            // Align with the frontend pending bubble id (`build_stages`
-            // formula) so settlement merges instead of dropping pendings.
-            let message_id = format!("{}-{}", profile.id, index);
-            match result {
-                Ok(response) => {
-                    let prompt_tokens = crate::tokens::estimate_tokens(&profile.system_prompt)
-                        + base_messages.iter().map(|m| crate::tokens::estimate_tokens(&m.content)).sum::<usize>();
-                    let completion_tokens = crate::tokens::estimate_tokens(&response.content);
-                    ChatMessage {
-                        id: message_id,
-                        role: "assistant".to_string(),
-                        content: response.content,
-                        speaker_id: Some(profile.id.clone()),
-                        speaker_name: profile.name.clone(),
-                        avatar: profile.avatar.clone(),
-                        pending: false,
-                        error: false,
-                        prompt_tokens: Some(prompt_tokens),
-                        completion_tokens: Some(completion_tokens),
-                        latency_ms: None,
-                        tool_calls: None,
-                        reasoning_content: None,
-                        reasoning_duration_ms: None,
-                    }
-                }
-                Err(err) => ChatMessage {
-                    id: message_id,
-                    role: "assistant".to_string(),
-                    content: err.to_string(),
-                    speaker_id: Some(profile.id.clone()),
-                    speaker_name: profile.name.clone(),
-                    avatar: profile.avatar.clone(),
-                    pending: false,
-                    error: true,
-                    prompt_tokens: None,
-                    completion_tokens: None,
-                    latency_ms: None,
-                    tool_calls: None,
-                    reasoning_content: None,
-                    reasoning_duration_ms: None,
-                },
-            }
-        })
-        .collect()
-}
 
 #[cfg(test)]
 mod tests {

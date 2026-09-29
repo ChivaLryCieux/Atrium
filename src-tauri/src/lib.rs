@@ -2,7 +2,6 @@ mod ai_client;
 mod commands;
 pub mod daemon;
 pub mod git;
-mod messages;
 mod models;
 mod orchestration;
 mod storage;

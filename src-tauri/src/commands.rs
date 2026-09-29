@@ -96,7 +96,7 @@ pub async fn execute_orchestration(
         project.as_ref().map(|p| (p.id.as_str(), p.name.as_str(), p.default_directory.as_deref())),
         soul.as_deref(),
     )
-    .await;
+    .await?;
 
     // Server-side persistence: settle the turn into the session file so the
     // frontend needs no extra save_session_messages/list_sessions round-trip

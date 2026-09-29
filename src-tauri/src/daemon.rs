@@ -107,8 +107,13 @@ pub struct DshDaemon {
     child: Option<Child>,
     /// Whether the bridge reported the dsh runtime itself as ready. Kept
     /// separate from `connection.status`: a reachable bridge whose kernel
-    /// failed to load must route turns to the direct API fallback.
+    /// failed to load is not a usable kernel, and a turn now fails loudly
+    /// instead of being diverted anywhere.
     kernel_ready: bool,
+    /// Why the kernel route is unavailable, verbatim from the last /healthz
+    /// verdict. Turns no longer fall back, so this detail is what the user is
+    /// shown instead of a generic failure.
+    kernel_detail: Option<String>,
     /// Set when {@link ensure_running} respawned the bridge. A fresh bridge
     /// holds fresh kernel runtimes, so any state the Rust side seeded into
     /// the old runtime (persona injections) must be re-seeded — the caller
@@ -233,6 +238,7 @@ impl DshDaemon {
             connection: HarnessConnection::default(),
             child: None,
             kernel_ready: false,
+            kernel_detail: None,
             reseed_required: false,
             #[cfg(target_os = "windows")]
             job: None,
@@ -425,9 +431,9 @@ impl DshDaemon {
             ),
             HealthOutcome::KernelMissing(detail) => (
                 // The bridge itself is fine; the kernel route is what is
-                // unavailable, and the direct-API fallback covers turns.
+                // unavailable, and a turn fails with this detail.
                 "ready",
-                format!("内核桥接在线但 dsh 运行时缺失，将回退直连通道: {detail}"),
+                format!("内核桥接在线但 dsh 运行时缺失: {detail}"),
                 false,
             ),
             HealthOutcome::Unreachable => (
@@ -437,8 +443,14 @@ impl DshDaemon {
             ),
         };
         self.connection.status = status.to_string();
-        self.connection.message = Some(message);
+        self.connection.message = Some(message.clone());
         self.kernel_ready = kernel_ready;
+        self.kernel_detail = if kernel_ready { None } else { Some(message) };
+    }
+
+    /// Why the kernel route is unavailable, from the last /healthz verdict.
+    pub fn kernel_detail(&self) -> Option<&str> {
+        self.kernel_detail.as_deref()
     }
 
     pub async fn stop(&mut self) -> Result<(), String> {
