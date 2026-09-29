@@ -148,6 +148,23 @@ function broadcastTelemetry(conversationId, stageId, event) {
 // route key: provider|model|effort|credential-fingerprint → DeepSeekHarness
 const harnessPool = new Map()
 // conversationId → { dshSessionId, chain: Promise }
+
+/**
+ * How many dsh runtimes may stay live at once.
+ *
+ * One runtime is a whole Node process with the entire plugin graph mounted, and
+ * the route key includes the model, the reasoning effort and the credential
+ * fingerprint — so without a cap, switching models in the picker leaves one
+ * ~250 MB runtime behind per combination, for the life of the bridge.
+ *
+ * Eviction is last-used-first and skips anything a turn is currently running
+ * on or a live conversation is still bound to; when every runtime is busy the
+ * pool is allowed to exceed the cap rather than interrupt work.
+ */
+const MAX_LIVE_HARNESSES = Math.max(
+  1,
+  Number(process.env.ATRIUM_MAX_HARNESSES ?? 3) || 3,
+)
 const conversations = new Map()
 
 // ── Wire protocol ──────────────────────────────────────────────
@@ -450,7 +467,10 @@ async function ensureHarness(request) {
   }
   const key = routeKey(request)
   let entry = harnessPool.get(key)
-  if (entry) return entry
+  if (entry) {
+    entry.lastUsed = Date.now()
+    return entry
+  }
 
   const childEnv = { ...process.env }
   // The DeepSeek adapter reads its own endpoint and key from the environment;
@@ -496,7 +516,7 @@ async function ensureHarness(request) {
 
   const harness = createHarness(request, childEnv, workspace, route, provider, reasoningEffort)
 
-  entry = { harness, key }
+  entry = { harness, key, lastUsed: Date.now(), activeTurns: 0 }
   harnessPool.set(key, entry)
   broadcast({
     type: 'kernel-status',
@@ -509,7 +529,69 @@ async function ensureHarness(request) {
     status: 'ready',
     detail: `dsh runtime ready (${request.model ?? 'deepseek-flash'}, ${route.protocol} over ${route.adapter})`,
   })
+  // The new runtime is live; make room for it before the next route arrives.
+  await pruneHarnessPool(key)
   return entry
+}
+
+/**
+ * Close idle runtimes until the pool fits {@link MAX_LIVE_HARNESSES}.
+ *
+ * Two tiers, because a runtime's kernel session is the *only* home of a
+ * conversation's context (`runTurn` sends the prompt alone), so closing a
+ * runtime that a conversation is still bound to silently ends that
+ * conversation's memory:
+ *
+ *   • soft cap — evict only runtimes no conversation is bound to. Safe, runs
+ *     forever, and reclaims exactly the leftovers of abandoned model switches.
+ *   • hard cap (`MAX_LIVE_HARNESSES * 2`) — if every runtime still holds a live
+ *     conversation, keep going and give up the coldest one's context, because an
+ *     unbounded pool is what exhausts memory in the first place. A dropped
+ *     context is announced on the event stream rather than done quietly.
+ *
+ * A runtime with a turn in flight is never closed, at either tier.
+ *
+ * @param {string} protectKey - route key to keep regardless of age.
+ */
+async function pruneHarnessPool(protectKey) {
+  const boundKeys = new Set(
+    [...conversations.values()].map((record) => record.routeKey).filter(Boolean),
+  )
+  const evictable = [...harnessPool.values()]
+    .filter((entry) => entry.key !== protectKey && entry.activeTurns === 0)
+    .sort((a, b) => a.lastUsed - b.lastUsed)
+
+  const evict = async (entry, droppedContext) => {
+    harnessPool.delete(entry.key)
+    for (const record of conversations.values()) {
+      // The kernel session lived in the process being closed, so the next turn
+      // on this route must seed a fresh one rather than resume a session id the
+      // new runtime never knew.
+      if (record.routeKey === entry.key) record.dshSessionId = undefined
+    }
+    broadcast({
+      type: 'kernel-status',
+      status: 'evicted',
+      detail: droppedContext
+        ? `released the least recently used dsh runtime (${harnessPool.size} left); its conversation context was reset`
+        : `released an unused dsh runtime (${harnessPool.size} left)`,
+    })
+    await entry.harness.close().catch(() => undefined)
+  }
+
+  // Soft cap: only runtimes no conversation is bound to.
+  for (const entry of evictable) {
+    if (harnessPool.size <= MAX_LIVE_HARNESSES) break
+    if (boundKeys.has(entry.key)) continue
+    await evict(entry, false)
+  }
+  // Hard cap: every remaining runtime holds live context — trade the coldest
+  // one's memory for a bounded process count.
+  for (const entry of evictable) {
+    if (harnessPool.size <= MAX_LIVE_HARNESSES * 2) break
+    if (!harnessPool.has(entry.key)) continue
+    await evict(entry, true)
+  }
 }
 
 function bindConversation(conversationId, dshSessionId) {
@@ -759,41 +841,48 @@ function runTurn(request, sseWrite) {
 
   const execution = record.chain.then(async () => {
     const entry = await ensureHarness(request)
-    const route = { conversationId, stageId }
-    const state = { usage: null, toolCalls: [], reasoningText: '', emittedText: '' }
-    broadcastTelemetry(conversationId, stageId, { kind: 'turn-start', model: request.model })
-
-    let result
+    // Held for the whole turn so pool pruning never closes a runtime that is
+    // currently producing a response, however this turn ends.
+    entry.activeTurns += 1
     try {
-      result = await entry.harness.run(prompt, {
-        ...(record.dshSessionId ? { sessionId: record.dshSessionId } : {}),
-        onNotification: (notification) => handleNotification(route, notification, state, sseWrite),
-      })
-    } catch (runError) {
-      // If harness.run rejected (e.g. repeated tool execution failure or network break),
-      // check if we already emitted substantial text. If so, recover partial output
-      // so the user never loses answers already generated.
-      if (state.emittedText && state.emittedText.trim().length > 0) {
-        console.warn(`[ATRIUM_BRIDGE] Turn execution failed with error: ${runError?.message ?? runError}. Recovering emitted text (${state.emittedText.length} chars).`);
-        result = {
-          sessionId: record.dshSessionId ?? 'recovered-session',
-          finalResponse: state.emittedText,
+      const route = { conversationId, stageId }
+      const state = { usage: null, toolCalls: [], reasoningText: '', emittedText: '' }
+      broadcastTelemetry(conversationId, stageId, { kind: 'turn-start', model: request.model })
+
+      let result
+      try {
+        result = await entry.harness.run(prompt, {
+          ...(record.dshSessionId ? { sessionId: record.dshSessionId } : {}),
+          onNotification: (notification) => handleNotification(route, notification, state, sseWrite),
+        })
+      } catch (runError) {
+        // If harness.run rejected (e.g. repeated tool execution failure or network break),
+        // check if we already emitted substantial text. If so, recover partial output
+        // so the user never loses answers already generated.
+        if (state.emittedText && state.emittedText.trim().length > 0) {
+          console.warn(`[ATRIUM_BRIDGE] Turn execution failed with error: ${runError?.message ?? runError}. Recovering emitted text (${state.emittedText.length} chars).`);
+          result = {
+            sessionId: record.dshSessionId ?? 'recovered-session',
+            finalResponse: state.emittedText,
+          }
+        } else {
+          throw runError
         }
-      } else {
-        throw runError
       }
-    }
 
-    bindConversation(conversationId, result.sessionId)
-    broadcastTelemetry(conversationId, stageId, { kind: 'turn-complete', sessionId: result.sessionId })
+      bindConversation(conversationId, result.sessionId)
+      broadcastTelemetry(conversationId, stageId, { kind: 'turn-complete', sessionId: result.sessionId })
 
-    return {
-      sessionId: result.sessionId,
-      finalResponse: result.finalResponse ?? state.emittedText ?? '',
-      reasoningContent: state.reasoningText || undefined,
-      ...(state.usage ? { usage: state.usage } : {}),
-      toolCalls: state.toolCalls,
-      kernelRoute: routeKey(request),
+      return {
+        sessionId: result.sessionId,
+        finalResponse: result.finalResponse ?? state.emittedText ?? '',
+        reasoningContent: state.reasoningText || undefined,
+        ...(state.usage ? { usage: state.usage } : {}),
+        toolCalls: state.toolCalls,
+        kernelRoute: routeKey(request),
+      }
+    } finally {
+      entry.activeTurns -= 1
     }
   })
 
