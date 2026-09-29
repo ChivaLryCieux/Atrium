@@ -1099,8 +1099,6 @@ async fn execute_parallel_kernel(
         .collect()
 }
 
-// ─── Direct route (fallback, no kernel) ────────────────────────
-
 #[cfg(test)]
 mod tests {
     use super::kernel_base_url;

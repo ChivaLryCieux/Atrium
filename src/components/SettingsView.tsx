@@ -161,6 +161,9 @@ export function SettingsView({
         endpoint: currentProfile.endpoint,
         apiKey: currentProfile.apiKey,
         apiProtocol: resolveProfileProtocol(currentProfile.apiProtocol, currentProfile.endpoint),
+        // The probe now issues a real minimal inference request, so it needs
+        // the model name to confirm that this model actually answers here.
+        model: currentProfile.model,
       });
       showAlert(t("settings.probeOkMessage", { message }));
     } catch (err) {

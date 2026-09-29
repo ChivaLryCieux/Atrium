@@ -15,7 +15,7 @@ pub fn build_http_client() -> Client {
 }
 
 /// Anthropic Messages API constants.
-const ANTHROPIC_VERSION: &str = "2023-06-01";
+pub const ANTHROPIC_VERSION: &str = "2023-06-01";
 /// Anthropic requires max_tokens; the UI has no such knob yet, so a generous
 /// default is sent (model-side caps still apply).
 const ANTHROPIC_MAX_TOKENS: u32 = 8192;
@@ -288,6 +288,19 @@ fn normalize_chat_endpoint(input: &str) -> String {
     format!("{endpoint}/chat/completions")
 }
 
+/// The inference endpoint a protocol's requests actually go to.
+///
+/// The settings form persists a complete endpoint, but a hand-typed base URL
+/// carries no protocol suffix, and a caller that builds its own request — the
+/// connection probe — has to resolve one the same way the senders do.
+pub fn inference_endpoint(endpoint: &str, protocol: &str) -> String {
+    match protocol.trim() {
+        "anthropic-messages" => normalize_endpoint_with_suffix(endpoint, "/v1/messages"),
+        "openai-responses" => normalize_endpoint_with_suffix(endpoint, "/responses"),
+        _ => normalize_chat_endpoint(endpoint),
+    }
+}
+
 fn extract_message_content(content: &Value) -> Option<String> {
     match content {
         Value::String(text) => Some(text.to_string()),
@@ -307,7 +320,10 @@ fn extract_message_content(content: &Value) -> Option<String> {
     }
 }
 
-fn readable_error_body(body: &str) -> String {
+/// The provider's own error text, when it sent one. The probe shows this
+/// verbatim: "model_not_found" or "unsupported_value" tells the user which
+/// field to fix, which a bare status code never does.
+pub fn readable_error_body(body: &str) -> String {
     if let Ok(parsed) = serde_json::from_str::<OpenAiErrorResponse>(body) {
         return parsed.error.message;
     }

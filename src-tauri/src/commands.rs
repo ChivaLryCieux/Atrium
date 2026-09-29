@@ -260,72 +260,211 @@ pub fn close_terminal(state: State<'_, crate::AppState>, id: String) -> Result<(
 
 // ─── Provider probe ────────────────────────────────────────────
 
+/// The prompt the probe sends. One word: the reply only has to exist, and a
+/// long probe prompt would make the probe cost real money.
+const PROBE_PROMPT: &str = "ping";
+
+/// What the probe learned, rendered for the user.
+struct ProbeOutcome {
+    status: String,
+    /// Whether the reply actually carried text, which separates "the route
+    /// works" from "the route answered with nothing usable".
+    produced_text: bool,
+}
+
+/// Whether a protocol's reply envelope carried any non-empty text.
+fn probe_reply_has_text(protocol: &str, value: &serde_json::Value) -> bool {
+    let text_field = |block: &serde_json::Value, key: &str| {
+        block
+            .get(key)
+            .and_then(|t| t.as_str())
+            .is_some_and(|t| !t.trim().is_empty())
+    };
+    match protocol.trim() {
+        "anthropic-messages" => value
+            .get("content")
+            .and_then(|c| c.as_array())
+            .is_some_and(|blocks| {
+                blocks.iter().any(|b| {
+                    b.get("type").and_then(|t| t.as_str()) == Some("text")
+                        && text_field(b, "text")
+                })
+            }),
+        "openai-responses" => value
+            .get("output")
+            .and_then(|o| o.as_array())
+            .is_some_and(|items| {
+                items.iter().any(|item| {
+                    item.get("content")
+                        .and_then(|c| c.as_array())
+                        .is_some_and(|blocks| {
+                            blocks.iter().any(|b| {
+                                b.get("type").and_then(|t| t.as_str()) == Some("output_text")
+                                    && text_field(b, "text")
+                            })
+                        })
+                })
+            }),
+        _ => value
+            .get("choices")
+            .and_then(|c| c.as_array())
+            .is_some_and(|choices| {
+                choices.iter().any(|choice| {
+                    choice
+                        .get("message")
+                        .and_then(|m| m.get("content"))
+                        .and_then(|c| c.as_str())
+                        .is_some_and(|t| !t.trim().is_empty())
+                })
+            }),
+    }
+}
+
+/// What to tell the user for a failed status, chosen per code: the remedy
+/// differs completely between a bad key and a gateway that never implemented
+/// the selected protocol.
+fn probe_status_hint(status: reqwest::StatusCode) -> &'static str {
+    match status.as_u16() {
+        401 | 403 => "请检查 API Key",
+        404 => "请检查 API 地址与所选协议是否匹配（该端点可能未实现此协议路径）",
+        429 => "请求过于频繁或额度不足",
+        400 | 422 => "请检查模型名称与协议参数是否被该端点接受",
+        _ => "请检查凭据或地址",
+    }
+}
+
+/// Send one minimal real inference request and report what came back.
+///
+/// A listing probe (`GET /models`) cannot answer the question the user actually
+/// has before a session starts. It passes when the endpoint is reachable, the
+/// key is honoured *by the listing route*, and that path exists — while the real
+/// request still fails on an unknown model name, a gateway that never
+/// implemented the selected protocol, a rejected request field, or a key that
+/// carries inference but not list permission. The user then sees a green
+/// "connected" and a broken first message.
+///
+/// So the probe speaks the selected protocol: the same endpoint resolution, the
+/// same auth headers and the same request shape the product uses, trimmed to
+/// the smallest reply that protocol allows.
+async fn probe_inference(
+    client: &reqwest::Client,
+    protocol: &str,
+    endpoint: &str,
+    api_key: &str,
+    model: &str,
+) -> Result<ProbeOutcome, String> {
+    let url = crate::ai_client::inference_endpoint(endpoint, protocol);
+    if url.is_empty() {
+        return Err("API 地址为空".to_string());
+    }
+    if api_key.is_empty() {
+        return Err("请先填写 API Key".to_string());
+    }
+    if model.is_empty() {
+        return Err("请先填写模型名称，真实探测需要它确认该模型可用".to_string());
+    }
+
+    // Deliberately minimal. `max_tokens` is sent only where the protocol
+    // requires it (Anthropic) and nowhere else, because that field has been
+    // renamed and is rejected outright by newer OpenAI models — a probe that
+    // tripped over its own payload would report a working provider as broken.
+    let (payload, request) = match protocol.trim() {
+        "anthropic-messages" => (
+            serde_json::json!({
+                "model": model,
+                "max_tokens": 1,
+                "messages": [{ "role": "user", "content": PROBE_PROMPT }],
+            }),
+            client
+                .post(&url)
+                .header("x-api-key", api_key)
+                .header("anthropic-version", crate::ai_client::ANTHROPIC_VERSION),
+        ),
+        "openai-responses" => (
+            serde_json::json!({
+                "model": model,
+                "input": [{ "role": "user", "content": PROBE_PROMPT }],
+                "stream": false,
+            }),
+            client.post(&url).bearer_auth(api_key),
+        ),
+        _ => (
+            serde_json::json!({
+                "model": model,
+                "messages": [{ "role": "user", "content": PROBE_PROMPT }],
+                "stream": false,
+            }),
+            client.post(&url).bearer_auth(api_key),
+        ),
+    };
+
+    let response = request
+        .json(&payload)
+        // A real generation is slower than a listing, and a cold model can take
+        // a while to produce its first token.
+        .timeout(std::time::Duration::from_secs(30))
+        .send()
+        .await
+        .map_err(|e| format!("无法连通 {url}: {e}"))?;
+
+    let status = response.status();
+    let body = response.text().await.unwrap_or_default();
+    if !status.is_success() {
+        // The provider usually explains itself, and that explanation is the
+        // only thing that distinguishes "wrong key" from "wrong model name" or
+        // "this field is not supported here".
+        let detail = crate::ai_client::readable_error_body(&body);
+        let hint = probe_status_hint(status);
+        return Err(if detail.trim().is_empty() {
+            format!("{url} 返回 {status}，{hint}")
+        } else {
+            format!("{url} 返回 {status}（{hint}）：{detail}")
+        });
+    }
+
+    // A 2xx is not automatically a working route: some gateways answer 200 with
+    // an empty envelope. Read the text where this protocol carries it.
+    let produced_text = serde_json::from_str::<serde_json::Value>(&body)
+        .map(|value| probe_reply_has_text(protocol, &value))
+        .unwrap_or(false);
+
+    Ok(ProbeOutcome {
+        status: status.to_string(),
+        produced_text,
+    })
+}
+
 #[tauri::command]
 pub async fn probe_provider(
     state: State<'_, crate::AppState>,
     endpoint: String,
     api_key: String,
     api_protocol: String,
+    model: String,
 ) -> Result<String, String> {
-    let base = endpoint.trim().trim_end_matches('/');
-    let base = base
-        .strip_suffix("/chat/completions")
-        .or_else(|| base.strip_suffix("/responses"))
-        .or_else(|| base.strip_suffix("/v1/messages"))
-        .unwrap_or(base);
-    if base.is_empty() {
-        return Err("API 地址为空".to_string());
-    }
-
-    // Anthropic authenticates with x-api-key + a version header, and lists
-    // models under the `/v1` namespace of the same API root rather than beside
-    // it — the same rule `dsh-llm-deepseek`'s `messagesApiRoot` applies when it
-    // builds the Messages URL. Probing `<root>/models` instead returns 404 and
-    // makes a perfectly good Anthropic endpoint look dead.
-    let anthropic = api_protocol.trim() == "anthropic-messages";
-    let base = if anthropic && !base.ends_with("/v1") {
-        format!("{base}/v1")
-    } else {
-        base.to_string()
+    let protocol = match api_protocol.trim() {
+        "" | "openai-chat" | "openai-responses" | "anthropic-messages" => api_protocol.trim(),
+        other => return Err(format!("未知的 API 协议 {other}，请在设置中重新选择")),
     };
-    // The page size is the documented maximum; this is a liveness probe, not a
-    // full catalog import, and the reply is never followed to a second page.
-    let url = if anthropic {
-        format!("{base}/models?limit=1000")
-    } else {
-        format!("{base}/models")
-    };
+    let started = std::time::Instant::now();
+    let outcome =
+        probe_inference(&state.http, protocol, endpoint.trim(), api_key.trim(), model.trim())
+            .await?;
+    let elapsed = started.elapsed().as_millis() as u64;
+    let model = model.trim();
 
-    let mut request = state
-        .http
-        .get(url)
-        .timeout(std::time::Duration::from_secs(10));
-    request = if anthropic {
-        request
-            .header("x-api-key", api_key.trim())
-            .header("anthropic-version", "2023-06-01")
+    if outcome.produced_text {
+        Ok(format!(
+            "推理连通正常（{} · {model} · {elapsed}ms），端点、凭据、协议与模型名均可用",
+            outcome.status
+        ))
     } else {
-        request.bearer_auth(api_key.trim())
-    };
-
-    let response = request
-        .send()
-        .await
-        .map_err(|e| format!("无法连通 {base}: {e}"))?;
-
-    let status = response.status();
-    if status.is_success() {
-        let body = response.text().await.unwrap_or_default();
-        // Both listing dialects answer with a `data` array; the count is a
-        // hint, so an unexpected shape simply omits it.
-        let count = serde_json::from_str::<serde_json::Value>(&body)
-            .ok()
-            .and_then(|v| v.get("data").and_then(|d| d.as_array()).map(|a| a.len()))
-            .map(|n| format!("，可用模型 {n} 个"))
-            .unwrap_or_default();
-        Ok(format!("连通正常 ({status}){count}"))
-    } else {
-        Err(format!("{base} 返回 {status}，请检查凭据或地址"))
+        // Reachable and authenticated, but the reply carried nothing. That is
+        // still a broken route for a chat product, so it is not a pass.
+        Err(format!(
+            "{model} 返回 {} 但没有产出任何文本，该模型或协议可能不受支持",
+            outcome.status
+        ))
     }
 }
 
@@ -565,4 +704,75 @@ pub fn git_get_log(repo_path: String, max_count: Option<usize>) -> Result<Vec<cr
 pub fn git_get_diff(repo_path: String, file_path: String, staged: bool) -> Result<String, String> {
     crate::git::get_diff(&repo_path, &file_path, staged)
 }
+#[cfg(test)]
+mod tests {
+    use super::{probe_reply_has_text, probe_status_hint};
+    use crate::ai_client::inference_endpoint;
+    use reqwest::StatusCode;
+    use serde_json::json;
+
+    /// The probe must resolve the same URL the product posts to, whether the
+    /// settings form stored a complete endpoint or a hand-typed base URL.
+    #[test]
+    fn probe_targets_the_protocols_own_inference_path() {
+        for (endpoint, protocol, expected) in [
+            ("https://api.deepseek.com/v1", "openai-chat", "https://api.deepseek.com/v1/chat/completions"),
+            ("https://api.deepseek.com/v1/chat/completions", "openai-chat", "https://api.deepseek.com/v1/chat/completions"),
+            ("https://api.openai.com/v1", "openai-responses", "https://api.openai.com/v1/responses"),
+            ("https://api.anthropic.com", "anthropic-messages", "https://api.anthropic.com/v1/messages"),
+            ("https://api.anthropic.com/v1/messages", "anthropic-messages", "https://api.anthropic.com/v1/messages"),
+        ] {
+            assert_eq!(inference_endpoint(endpoint, protocol), expected);
+        }
+    }
+
+    /// A 200 that carries no text is not a working route, so the probe has to
+    /// look where each protocol actually puts its reply text. These pin all
+    /// three envelopes plus the empty shapes that must not pass.
+    #[test]
+    fn probe_reads_reply_text_per_protocol() {
+        assert!(probe_reply_has_text(
+            "openai-chat",
+            &json!({"choices":[{"message":{"content":"pong"}}]})
+        ));
+        assert!(!probe_reply_has_text(
+            "openai-chat",
+            &json!({"choices":[{"message":{"content":"  "}}]})
+        ));
+        assert!(!probe_reply_has_text("openai-chat", &json!({"choices":[]})));
+
+        assert!(probe_reply_has_text(
+            "anthropic-messages",
+            &json!({"content":[{"type":"text","text":"pong"}]})
+        ));
+        // A thinking block is not an answer.
+        assert!(!probe_reply_has_text(
+            "anthropic-messages",
+            &json!({"content":[{"type":"thinking","thinking":"..."}]})
+        ));
+
+        assert!(probe_reply_has_text(
+            "openai-responses",
+            &json!({"output":[{"type":"message","content":[{"type":"output_text","text":"pong"}]}]})
+        ));
+        assert!(!probe_reply_has_text("openai-responses", &json!({"output":[]})));
+    }
+
+    /// Each status implies a different fix, so the hint must not collapse into
+    /// one generic message — that is what made the old probe useless.
+    #[test]
+    fn probe_hints_name_the_actual_remedy() {
+        assert_eq!(probe_status_hint(StatusCode::UNAUTHORIZED), "请检查 API Key");
+        assert_ne!(
+            probe_status_hint(StatusCode::NOT_FOUND),
+            probe_status_hint(StatusCode::TOO_MANY_REQUESTS)
+        );
+        assert_ne!(
+            probe_status_hint(StatusCode::BAD_REQUEST),
+            probe_status_hint(StatusCode::UNAUTHORIZED)
+        );
+    }
+}
+
+
 
