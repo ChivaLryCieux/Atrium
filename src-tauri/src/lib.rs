@@ -52,6 +52,8 @@ pub fn run() {
             commands::get_system_telemetry,
             commands::open_path_in_explorer,
             commands::get_default_workspace_path,
+            commands::read_workspace_tree,
+            commands::read_file_preview,
             commands::minimize_window,
             commands::toggle_maximize_window,
             commands::close_window,

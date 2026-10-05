@@ -9,7 +9,8 @@
     "default": "默认",
     "setAsDefault": "设为默认",
     "dangerAction": "危险操作",
-    "hint": "提示"
+    "hint": "提示",
+    "close": "关闭"
   },
   "topbar": {
     "newTerminal": "新建终端",
@@ -27,6 +28,7 @@
     "untitledProject": "未命名项目",
     "projectSettings": "项目设置",
     "sourceControl": "源码管理",
+    "workspaceFiles": "工程文件树",
     "deleteTask": "删除任务",
     "renameTask": "重命名任务",
     "confirmDeleteTask": "确认删除这个任务？",
@@ -394,5 +396,11 @@
     "openInExplorer": "在系统资源管理器中定位",
     "previewSnippet": "产出片段预览",
     "producer": "生成算子"
+  },
+  "workspace": {
+    "filesTitle": "工程文件树",
+    "refresh": "刷新文件列表",
+    "loading": "正在扫描文件...",
+    "empty": "暂无文件或目录为空"
   }
 }

@@ -20,11 +20,13 @@ type SidebarProps = {
   activeTaskId?: string;
   activeProjectId?: string | null;
   activeGitProjectId?: string | null;
+  activeFilesProjectId?: string | null;
   onSelectProject: (id: string) => void;
   onNewProject: () => void;
   onNewTask: (projectId: string) => void;
   onOpenProjectSettings: (projectId: string) => void;
   onToggleGitPanel?: (projectId: string) => void;
+  onToggleFilesPanel?: (projectId: string) => void;
   width?: number;
   onSelectTask: (id: string) => void;
   onDeleteTask: (id: string) => void;
@@ -42,11 +44,13 @@ export function Sidebar({
   activeTaskId,
   activeProjectId,
   activeGitProjectId,
+  activeFilesProjectId,
   onSelectProject,
   onNewProject,
   onNewTask,
   onOpenProjectSettings,
   onToggleGitPanel,
+  onToggleFilesPanel,
   onSelectTask,
   onDeleteTask,
   onRenameTask,
@@ -358,6 +362,20 @@ export function Sidebar({
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <line x1="12" y1="5" x2="12" y2="19" />
                         <line x1="5" y1="12" x2="19" y2="12" />
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      className={`icon-btn ${activeFilesProjectId === project.id ? "active" : ""}`}
+                      title={t("sidebar.workspaceFiles")}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onToggleFilesPanel?.(project.id);
+                      }}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                        <line x1="9" y1="3" x2="9" y2="21" />
                       </svg>
                     </button>
                     <button

@@ -189,3 +189,18 @@ pub(crate) struct OpenAiErrorResponse {
 pub(crate) struct OpenAiError {
     pub message: String,
 }
+
+// ─── Workspace Tree Entry ──────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceEntry {
+    pub name: String,
+    pub path: String,
+    pub is_dir: bool,
+    pub size: u64,
+    pub modified: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub children: Option<Vec<WorkspaceEntry>>,
+}
+

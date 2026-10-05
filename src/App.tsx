@@ -39,6 +39,9 @@ const SettingsView = lazy(() => import("./components/SettingsView").then((m) => 
 const GitSourceControlPanel = lazy(() =>
   import("./components/GitSourceControlPanel").then((m) => ({ default: m.GitSourceControlPanel })),
 );
+const WorkspaceTreePanel = lazy(() =>
+  import("./components/WorkspaceTreePanel").then((m) => ({ default: m.WorkspaceTreePanel })),
+);
 const TerminalPanel = lazy(() => import("./components/TerminalPanel").then((m) => ({ default: m.TerminalPanel })));
 const Grainient = lazy(() => import("./components/Grainient").then((m) => ({ default: m.Grainient })));
 const ProjectDialog = lazy(() => import("./components/ProjectDialog").then((m) => ({ default: m.ProjectDialog })));
@@ -74,6 +77,7 @@ export function App() {
   const [activeTerminalId, setActiveTerminalId] = useState<string | null>(null);
   const [isTerminalOpen, setIsTerminalOpen] = useState<boolean>(false);
   const [activeGitProjectId, setActiveGitProjectId] = useState<string | null>(null);
+  const [activeFilesProjectId, setActiveFilesProjectId] = useState<string | null>(null);
   const [isPaletteOpen, setIsPaletteOpen] = useState<boolean>(false);
 
   // ── Panel sizing (localStorage-persisted view state) ──
@@ -510,9 +514,15 @@ export function App() {
             onNewProject={() => setProjectDialog({ mode: "create" })}
             onNewTask={(projectId) => handleNewTask(projectId)}
             onOpenProjectSettings={(projectId) => setProjectDialog({ mode: "edit", projectId })}
-            onToggleGitPanel={(projectId) =>
-              setActiveGitProjectId((cur) => (cur === projectId ? null : projectId))
-            }
+            onToggleGitPanel={(projectId) => {
+              setActiveFilesProjectId(null);
+              setActiveGitProjectId((cur) => (cur === projectId ? null : projectId));
+            }}
+            onToggleFilesPanel={(projectId) => {
+              setActiveGitProjectId(null);
+              setActiveFilesProjectId((cur) => (cur === projectId ? null : projectId));
+            }}
+            activeFilesProjectId={activeFilesProjectId}
             onSelectTask={handleSelectSession}
             onDeleteTask={handleDeleteSession}
             onRenameTask={handleRenameSession}
@@ -524,6 +534,26 @@ export function App() {
               onResize={handleResizeSidebar}
               onReset={handleResetSidebar}
             />
+          )}
+
+          {/* Workspace Files Secondary Sidebar */}
+          {activeFilesProjectId && (
+            <>
+              <Suspense fallback={null}>
+                <WorkspaceTreePanel
+                  projectId={activeFilesProjectId}
+                  project={projects.find((p) => p.id === activeFilesProjectId)}
+                  workspacePath={workspacePath}
+                  width={gitPanelWidth}
+                  onClose={() => setActiveFilesProjectId(null)}
+                />
+              </Suspense>
+              <PanelResizer
+                orientation="vertical"
+                onResize={handleResizeGitPanel}
+                onReset={handleResetGitPanel}
+              />
+            </>
           )}
 
           {/* Source Control Secondary Sidebar (VS Code Style) */}

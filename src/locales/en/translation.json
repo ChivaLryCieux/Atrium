@@ -9,7 +9,8 @@
     "default": "Default",
     "setAsDefault": "Set as default",
     "dangerAction": "Dangerous operation",
-    "hint": "Notice"
+    "hint": "Notice",
+    "close": "Close"
   },
   "topbar": {
     "newTerminal": "New terminal",
@@ -27,6 +28,7 @@
     "untitledProject": "Untitled Project",
     "projectSettings": "Project Settings",
     "sourceControl": "Source Control",
+    "workspaceFiles": "Workspace Files",
     "deleteTask": "Delete Task",
     "renameTask": "Rename task",
     "confirmDeleteTask": "Are you sure you want to delete this task?",
@@ -394,5 +396,11 @@
     "openInExplorer": "Reveal in File Explorer",
     "previewSnippet": "Preview Snippet",
     "producer": "Operator"
+  },
+  "workspace": {
+    "filesTitle": "Workspace Files",
+    "refresh": "Refresh Files",
+    "loading": "Scanning files...",
+    "empty": "No files or directory is empty"
   }
 }

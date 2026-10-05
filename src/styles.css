@@ -5450,3 +5450,280 @@ body.resizing-row * {
   font-family: var(--font-mono, monospace);
 }
 
+
+/* ==========================================================================
+   Workspace Tree & Quick Preview Panel (Concrete Core Architecture)
+   ========================================================================== */
+.workspace-tree-panel {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  width: 280px;
+  height: 100%;
+  background-color: var(--bg-sidebar);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+  user-select: none;
+  overflow: hidden;
+  flex-shrink: 0;
+  animation: workspaceTreeSlideIn 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes workspaceTreeSlideIn {
+  from {
+    opacity: 0.8;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.workspace-tree-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 38px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: transparent;
+  flex-shrink: 0;
+}
+
+.tree-header-left {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text-secondary);
+}
+
+.tree-panel-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+}
+
+.tree-header-right {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.workspace-tree-body {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 6px 0;
+}
+
+.tree-status-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.tree-content-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.tree-node-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.tree-node-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding-right: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-secondary);
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.tree-node-row:hover {
+  background: var(--bg-sidebar-hover);
+  color: var(--text-primary);
+}
+
+.tree-node-row.selected {
+  background: var(--bg-pill);
+  color: var(--accent-black);
+  font-weight: 500;
+}
+
+.tree-chevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.tree-dir-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.tree-node-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono, monospace);
+  font-size: 11.5px;
+}
+
+.tree-file-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.ext-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 700;
+  font-family: var(--font-mono, monospace);
+  padding: 0 3px;
+  height: 14px;
+  border-radius: 2px;
+  letter-spacing: -0.2px;
+}
+
+.ext-badge.ts, .ext-badge.tsx {
+  background: rgba(49, 120, 198, 0.15);
+  color: #3178c6;
+}
+
+.ext-badge.js, .ext-badge.jsx {
+  background: rgba(247, 223, 30, 0.2);
+  color: #bfa100;
+}
+
+.ext-badge.rs {
+  background: rgba(222, 90, 54, 0.15);
+  color: #de5a36;
+}
+
+.ext-badge.json {
+  background: rgba(107, 114, 128, 0.15);
+  color: var(--text-secondary);
+}
+
+.ext-badge.md {
+  background: rgba(59, 130, 246, 0.12);
+  color: #2563eb;
+}
+
+.ext-badge.css {
+  background: rgba(37, 99, 235, 0.15);
+  color: #2563eb;
+}
+
+.ext-badge.html {
+  background: rgba(227, 76, 38, 0.15);
+  color: #e34c26;
+}
+
+.ext-badge.yml {
+  background: rgba(203, 56, 55, 0.15);
+  color: #cb3837;
+}
+
+.file-svg-icon {
+  color: var(--text-muted);
+}
+
+.file-quick-preview-pane {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border-default);
+  background: var(--bg-card);
+  max-height: 48%;
+  min-height: 160px;
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.04);
+  z-index: 5;
+}
+
+.preview-pane-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 32px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-sidebar);
+  flex-shrink: 0;
+}
+
+.preview-header-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+}
+
+.preview-filename {
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--font-mono, monospace);
+  color: var(--text-primary);
+}
+
+.preview-pane-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.preview-pane-content {
+  flex: 1;
+  overflow: auto;
+  padding: 8px 10px;
+  background: var(--bg-app);
+}
+
+.preview-loading-hint {
+  padding: 24px;
+  text-align: center;
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.preview-code-pre {
+  margin: 0;
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.preview-markdown-wrapper {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
