@@ -373,5 +373,26 @@
     "toggleGit": "Source Control Panel",
     "toggleTheme": "Cycle Theme",
     "switchLanguage": "Switch Language"
+  },
+  "goal": {
+    "objective": "Target Objective",
+    "placeholder": "Set objective for this session…",
+    "inProgress": "Agent in progress",
+    "edit": "Edit objective",
+    "save": "Save",
+    "collapse": "Collapse objective",
+    "expand": "Expand objective",
+    "clear": "Clear objective"
+  },
+  "deliverable": {
+    "title": "Produced Deliverables",
+    "created": "Created",
+    "modified": "Modified",
+    "deleted": "Deleted",
+    "executed": "Executed",
+    "copyPath": "Copy file path",
+    "openInExplorer": "Reveal in File Explorer",
+    "previewSnippet": "Preview Snippet",
+    "producer": "Operator"
   }
 }

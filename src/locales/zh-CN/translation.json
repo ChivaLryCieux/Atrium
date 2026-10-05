@@ -373,5 +373,26 @@
     "toggleGit": "源码管理面板",
     "toggleTheme": "切换主题",
     "switchLanguage": "切换语言"
+  },
+  "goal": {
+    "objective": "阶段目标",
+    "placeholder": "设定当前会话阶段目标…",
+    "inProgress": "智能体推进中",
+    "edit": "编辑目标",
+    "save": "保存",
+    "collapse": "收起目标",
+    "expand": "展开完整目标",
+    "clear": "清除目标"
+  },
+  "deliverable": {
+    "title": "产出交付清单",
+    "created": "新建",
+    "modified": "变更",
+    "deleted": "删除",
+    "executed": "执行",
+    "copyPath": "复制文件路径",
+    "openInExplorer": "在系统资源管理器中定位",
+    "previewSnippet": "产出片段预览",
+    "producer": "生成算子"
   }
 }

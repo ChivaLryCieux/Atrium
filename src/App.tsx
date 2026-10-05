@@ -7,6 +7,7 @@ import { PromptCard } from "./components/PromptCard";
 import type { TerminalSession } from "./components/TerminalPanel";
 import { PanelResizer } from "./components/PanelResizer";
 import { StageTelemetryHud } from "./components/StageTelemetryHud";
+import { GoalBar } from "./components/GoalBar";
 import { MessageStream } from "./components/MessageStream";
 import { useToast } from "./components/Toast";
 import {
@@ -265,6 +266,11 @@ export function App() {
   const activeProject = useMemo(
     () => projects.find((p) => p.id === activeProjectId) ?? null,
     [projects, activeProjectId]
+  );
+
+  const activeSession = useMemo(
+    () => sessions.find((s) => s.id === activeSessionId) ?? null,
+    [sessions, activeSessionId]
   );
 
   const openDirectory = activeProject?.defaultDirectory || workspacePath;
@@ -610,6 +616,16 @@ export function App() {
               ) : (
                 /* Active Conversation View — WeChat style: avatar + bubble rows */
                 <div className="chat-conversation-view">
+                  <GoalBar
+                    goalText={activeSession?.title || messages[0]?.content?.slice(0, 80) || null}
+                    isStreaming={isSending}
+                    onUpdateGoal={(newGoal) => {
+                      if (activeSessionId) {
+                        handleRenameSession(activeSessionId, newGoal);
+                      }
+                    }}
+                  />
+
                   <MessageStream
                     messages={messages}
                     userName={settings?.userName?.trim() || t("app.me")}
