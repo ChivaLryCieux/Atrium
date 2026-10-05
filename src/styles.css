@@ -6026,3 +6026,120 @@ body.resizing-row * {
 .takeover-decision-status.rejected {
   color: #dc2626;
 }
+
+/* ==========================================================================
+   Concrete Core Aesthetics Polish: Tokens, Noise Layer & Micro-interactions
+   ========================================================================== */
+
+/* Dark Mode Overrides for Newly Introduced Modules */
+[data-theme="pure-black"] .workspace-tree-panel {
+  background-color: var(--bg-sidebar);
+  border-color: var(--border-subtle);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme="pure-black"] .workspace-tree-header {
+  border-bottom-color: var(--border-subtle);
+}
+
+[data-theme="pure-black"] .file-quick-preview-pane {
+  background: var(--bg-card);
+  border-top-color: var(--border-default);
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.5);
+}
+
+[data-theme="pure-black"] .preview-pane-header {
+  background: var(--bg-sidebar);
+  border-bottom-color: var(--border-subtle);
+}
+
+[data-theme="pure-black"] .preview-pane-content {
+  background: #18191c;
+}
+
+[data-theme="pure-black"] .takeover-card {
+  background: #1e1f24;
+  border-color: #383a42;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+
+[data-theme="pure-black"] .takeover-header {
+  background: #25272e;
+  border-bottom-color: #383a42;
+}
+
+[data-theme="pure-black"] .takeover-command-preview {
+  background: #16171a;
+  border-color: #2e3037;
+  color: #e4e4e7;
+}
+
+[data-theme="pure-black"] .takeover-option-pill {
+  background: #23252b;
+  border-color: #383a42;
+}
+
+[data-theme="pure-black"] .takeover-option-pill:hover {
+  background: #2b2d35;
+  border-color: #4f525d;
+}
+
+[data-theme="pure-black"] .takeover-option-pill.selected {
+  background: #2f323c;
+  border-color: #f4f4f5;
+}
+
+[data-theme="pure-black"] .takeover-input {
+  background: #18191c;
+  border-color: #383a42;
+  color: #f4f4f5;
+}
+
+[data-theme="pure-black"] .takeover-footer {
+  background: #25272e;
+  border-top-color: #383a42;
+}
+
+[data-theme="pure-black"] .takeover-action-btn.primary {
+  background: #f4f4f5;
+  color: #18181b;
+  border-color: #f4f4f5;
+}
+
+[data-theme="pure-black"] .takeover-action-btn.primary:hover {
+  background: #e4e4e7;
+}
+
+/* Tactile Click Micro-Interactions (Mechanical Key Feedback) */
+.takeover-action-btn:active,
+.goal-edit-btn:active,
+.deliverable-action-btn:active,
+.tree-node-row:active {
+  transform: translateY(1px);
+}
+
+/* Subtle Film Grain Noise Overlay (Simulating Concrete Material) */
+.stage-container::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.025;
+  z-index: 1;
+  background-image: radial-gradient(#000000 1px, transparent 0);
+  background-size: 8px 8px;
+}
+
+[data-theme="pure-black"] .stage-container::after {
+  opacity: 0.04;
+  background-image: radial-gradient(#ffffff 1px, transparent 0);
+}
+
+/* Sharp Instrument Status Accents */
+.ext-badge {
+  text-shadow: 0 0 1px rgba(0, 0, 0, 0.05);
+}
+
+.takeover-badge-text {
+  font-family: var(--font-mono, monospace);
+}
