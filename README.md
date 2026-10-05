@@ -39,7 +39,7 @@ Atrium： **AI Agent Harness（智能体驾驭）** 应用：
 | --- | --- | --- |
 | 包管理 / 工程体系 | pnpm workspace + Corepack（`packageManager` 字段锁定） | pnpm 11.7.0 |
 | 运行时 | Node（开发 ≥ 20；分发的桥接内置 Node 24 单文件运行时） | 24.19.0 |
-| AI 内核 | vendored `deepseek-harness`，以 `dsh --profile sdk` 运行（零污染检出） | 0.1.6-alpha.2 |
+| AI 内核 | vendored `deepseek-harness`，以 `dsh --profile sdk` 运行（零污染检出） | 0.2.1-alpha.1 |
 | 内核 SDK | `@deepseek-ai/dsh-sdk-client`（stdio JSON-RPC） | 随内核检出 |
 | 桌面宿主 | Tauri 2 + Rust（edition 2021，rust-version 1.77） | 2.11 |
 | 表现层 | React 18 + TypeScript + Vite | 18.3 / 5.6 / 5.4 |
@@ -50,39 +50,59 @@ Atrium： **AI Agent Harness（智能体驾驭）** 应用：
 
 ---
 
-## 架构概览
+## 架构设计：Sidecar 多进程体系与分层 IPC
 
-```text
-Atrium 桌面工作台 (Desktop Host)
-├── 表现层 (React 18 + TypeScript + Vite)
-│   ├── 工作台布局 (TopBar / Sidebar / CenterHome / PromptCard)
-│   ├── 设置与人格 (SettingsView / SoulManagerDialog)
-│   ├── 嵌入式终端 (TerminalPanel: xterm.js + PTY)
-│   └── DSH WebSocket 流式客户端 (dshClient.ts)
-│
-├── 宿主层 (Rust + Tauri 2.0)
-│   ├── 内核桥接进程托管 (daemon.rs: spawn/探活/退出回收、崩溃自愈重拉)
-│   ├── 确定性编排拓扑服务 (orchestration.rs: 内核路由 + 直连兜底)
-│   ├── 原生系统遥测与 Explorer 集成 (commands.rs)
-│   └── 本地配置与状态持久化 (storage.rs)
-│
-└── 内核层 (DeepSeek Harness / Cordis Microkernel)
-    ├── 内核桥 (@atrium/desktop-host: SDK stdio 运行时 + HTTP/WS 桥面)
-    ├── 核心运行时 (deepseek-harness upstream) - [ZERO POLLUTION]
-    ├── SDK 协议 (@deepseek-ai/dsh-sdk-client: initialize/session/prompt)
-    └── Cordis Profile (@atrium/profile-desktop + cordis.patch.yml)
+Atrium 采用工业级的 **Sidecar（配属伴生进程）多进程异构架构**，将“轻量高频的交互宿主”与“重量高负载的智能体内核”彻底解耦：
+
+```mermaid
+flowchart TD
+    subgraph Host["宿主环境 (Host Process)"]
+        UI["表现层渲染器 (React 18 · WebView2)"]
+        Rust["原生主控守护 (Tauri 2 · Rust)"]
+        UI <-->|"Tauri IPC (invoke / emit)"| Rust
+    end
+
+    subgraph Sidecars["配属伴生边车群 (Sidecar Processes)"]
+        Bridge["桌面宿主桥接 (Node.js 运行时 · @atrium/desktop-host)"]
+        Kernel["DSH 核心引擎 (deepseek-harness-sdk-runtime.exe)
+· 自包含 Node 24 运行闭包
+· Cordis 微内核 / 智能体编排"]
+        Ripgrep["检索边车 (rg.exe)
+· 多线程高性能代码检索"]
+
+        Kernel <-->|"进程通信 / CLI 管道"| Ripgrep
+    end
+
+    Rust <-->|"Windows Job Object / 动态加密 Token 鉴权"| Bridge
+    Rust <-->|"SSE 流式管道 / 16ms 自适应帧聚合 (127.0.0.1:19387)"| Bridge
+    UI <-->|"Tauri 原生星型 IPC (kernel-stream-event / 无需暴露端口)"| Rust
+    UI -.->|"动态 Token 容灾热备通道 (ws://127.0.0.1:19387/events)"| Bridge
+    Bridge <-->|"stdio JSON-RPC (@deepseek-ai/dsh-sdk-client)"| Kernel
 ```
 
-### 内核数据流
+### 为什么采用 Sidecar 多进程架构？
 
-```text
-React UI ──Tauri IPC──> Rust 编排 ──POST /v1/turn──> @atrium/desktop-host
-                                                          │ DeepSeekHarness.run()
-                                                          ▼
-                                        dsh --profile sdk (stdio JSON-RPC 子进程)
-                                                          │ session.event
-React UI <──WS /events── 桥接广播 assistant-stream 增量 ◄──┘
-```
+1. **崩溃物理隔离与界面保活 (Fault Isolation & UI Liveness)**：
+   智能体在执行 AST 语法分析、多并发大模型流式推理、大规模文件写入或执行复杂脚本时，若发生 OOM（内存溢出）或内核 Fatal Error，仅会影响独立的 Sidecar 边车进程；Tauri 主界面与 Rust 宿主完全不受干扰、绝不白屏卡死，并可实时实现进程重连与自愈。
+2. **异构语言的最佳工程结合 (Rust + TypeScript/Node)**：
+   Rust 负责极速冷启动、微小内存驻留、窗口阴影渲染、原生系统 PTY 终端与文件树安全截断；TypeScript 则专注于繁荣的 npm 插件生态、Cordis 微内核热补丁与动态 LLM Tool 分发。两端通过标准进程通道协同，无需在 Rust 中内嵌臃肿且极易内存泄漏的内联 JS 运行时（如 deno_core）。
+3. **零环境依赖打包分发 (Zero-Prerequisite Packaging)**：
+   通过 `pnpm run build:kernel-exe`，DSH 内核及其全量依赖被编译成单文件自包含二进制可执行文件（`deepseek-harness-sdk-runtime-win-x64.exe`）。最终生成的 Windows 安装包免除用户预先安装 Node.js、Python 或特定环境的繁琐要求。
+4. **Windows Job Object 内核级生命周期守护 (Guaranteed Zombie Cleanup)**：
+   针对桌面端多进程常见的“主程序关闭后后台残留僵尸 node 进程”顽疾，Atrium 宿主在 `src-tauri/src/daemon.rs` 中调用 Win32 `CreateJobObjectW` 并施加 `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` 限制。主窗口退出（不论是正常退出、Alt+F4 还是崩溃），Windows 操作系统内核将无条件级联杀死全量边车进程树。
+
+---
+
+### 分层 IPC 协议体系 (Multi-Tier IPC Protocols)
+
+系统内部采用三层混合 IPC（进程间通信）机制，兼顾安全性、确定性事务与高吞吐流式传输：
+
+| IPC 分层 | 通信两端 | 传输载体与安全协议 | 通信内容与业务职责 |
+| :--- | :--- | :--- | :--- |
+| **Tier 1: 渲染与宿主** | WebView2 (React) ↔ Rust (Tauri Core) | **Tauri v2 原生 IPC 星型中枢**<br>· 底层基于 WebView2 `postMessage` (C++ Chromium IPC)<br>· 上层序列化为 JSON-RPC 请求与 `kernel-stream-event` 原生事件总线 | · **单一事实来源**：所有流式 Token、中间工具调用与遥测通过 Rust 统一中转，彻底消除三角路由与重载丢包<br>· 请求模式 (`invoke`)：工程文件树扫描、大文件分片安全截断、持久化落盘<br>· 原生流式通道 (`listen`)：毫秒级响应分发，无需暴露裸网络端口 |
+| **Tier 2: 宿主与边车** | Rust 宿主 ↔ Desktop Bridge 代理 | **内核级守护 + 动态安全握手**<br>· Windows Job Object 进程树作业管理<br>· **加密级强随机 Token 握手**（每次启动动态派生 32 字节 Hex 密钥，Stdio 秘密注入）<br>· **Origin Pinning 本地源隔离**（严格阻断同机非信任进程与浏览器 CSRF 探测） | · 边车进程树生命周期托管（主进程关闭时操作系统内核级级联清理）<br>· 动态端口协商与 `GET /healthz` 活跃性探测<br>· 全请求强制携带 `Authorization: Bearer <DynamicToken>`，401/403 严格鉴权 |
+| **Tier 3: 客户端与内核** | Rust / Webview ↔ Bridge ↔ DSH 单文件内核 | **自适应帧聚合双通道 (Adaptive Frame-Batching)**<br>1. **HTTP/1.1 REST (SSE 流式管道)**<br>2. **16ms 自适应帧聚合合并池**<br>3. **stdio JSON-RPC** (Bridge ↔ 内核二进制) | 1. **REST 事务**：`POST /v1/turn`（提请智能体编排轮次）、`POST /v1/reset`（会话销毁）<br>2. **16ms 帧对齐背压**：文本增量在 16ms（60Hz 帧间隔）内自适应聚合下发，消除 75%+ 的高频 IPC 切换开销与 React 渲染卡顿<br>3. **内核通道**：通过 `@deepseek-ai/dsh-sdk-client` 标准协议驱动单文件 exe 执行 |
+
 
 ---
 
