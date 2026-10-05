@@ -95,7 +95,7 @@ impl Default for HarnessConnection {
             status: "standby".to_string(),
             url: "http://127.0.0.1:19387".to_string(),
             port: 19387,
-            token: Some("atrium-session-token".to_string()),
+            token: None,
             pid: None,
             message: Some("Kernel bridge not started yet".to_string()),
         }
@@ -305,9 +305,11 @@ impl DshDaemon {
             .map(normalize_verbatim)
             .map(|d| d.to_string_lossy().to_string());
 
+        let dynamic_token = format!("atrium-{}", uuid::Uuid::new_v4().simple());
         let mut command = Command::new(&paths.node_bin);
         command
             .arg(&paths.script)
+            .arg("--token").arg(&dynamic_token)
             .arg("--port").arg(port.to_string())
             .arg("--host").arg("127.0.0.1")
             .arg("--app-version").arg(env!("CARGO_PKG_VERSION"))
@@ -362,7 +364,7 @@ impl DshDaemon {
             status: self.connection.status.clone(),
             url: format!("http://127.0.0.1:{port}"),
             port,
-            token: Some("atrium-session-token".to_string()),
+            token: Some(dynamic_token),
             pid: Some(pid),
             message: self.connection.message.clone(),
         };

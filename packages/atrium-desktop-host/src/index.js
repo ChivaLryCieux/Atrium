@@ -34,10 +34,11 @@ import { WebSocketServer } from 'ws'
 // ── CLI arguments ──────────────────────────────────────────────
 
 function parseArgs(argv) {
-  const args = { port: 19387, host: '127.0.0.1', dshRoot: null, kernelExe: null, appVersion: null, patch: [], workspace: null, dshHome: null }
+  const args = { port: 19387, host: '127.0.0.1', dshRoot: null, kernelExe: null, appVersion: null, patch: [], workspace: null, dshHome: null, token: null }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
-    if (a === '--port') args.port = Number(argv[++i])
+    if (a === '--token') args.token = String(argv[++i])
+    else if (a === '--port') args.port = Number(argv[++i])
     else if (a === '--host') args.host = argv[++i]
     else if (a === '--dsh-root') args.dshRoot = resolve(argv[++i])
     else if (a === '--kernel-exe') args.kernelExe = resolve(argv[++i])
@@ -896,6 +897,34 @@ async function readBody(req) {
   }
 }
 
+
+// ── Local IPC Security & Origin Isolation ──────────────────────
+
+function isOriginAllowed(origin) {
+  if (!origin) return true // native local non-browser requests (Rust reqwest, curl)
+  try {
+    const parsed = new URL(origin)
+    const host = parsed.hostname
+    return (
+      host === 'localhost' ||
+      host === '127.0.0.1' ||
+      parsed.protocol === 'tauri:' ||
+      parsed.protocol === 'app:'
+    )
+  } catch {
+    return false
+  }
+}
+
+function authenticate(req) {
+  if (!args.token) return true // backwards-compatible if no token configured
+  const authHeader = req.headers['authorization']
+  const customHeader = req.headers['x-atrium-token']
+  if (authHeader && authHeader === `Bearer ${args.token}`) return true
+  if (customHeader && customHeader === args.token) return true
+  return false
+}
+
 const httpServer = createServer(async (req, res) => {
   if (req.method === 'OPTIONS') {
     res.writeHead(204, {
@@ -904,6 +933,12 @@ const httpServer = createServer(async (req, res) => {
       'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     })
     res.end()
+    return
+  }
+
+  const origin = req.headers['origin']
+  if (origin && !isOriginAllowed(origin)) {
+    sendJson(res, 403, { error: 'Forbidden: untrusted origin' })
     return
   }
 
@@ -986,6 +1021,10 @@ const httpServer = createServer(async (req, res) => {
     }
 
     if (req.method === 'POST' && url === '/v1/reset') {
+      if (!authenticate(req)) {
+        sendJson(res, 401, { error: 'Unauthorized: invalid or missing Atrium IPC token' })
+        return
+      } 
       const { conversationId } = await readBody(req)
       if (conversationId) conversations.delete(String(conversationId))
       else conversations.clear()
@@ -1000,7 +1039,23 @@ const httpServer = createServer(async (req, res) => {
 })
 
 const wss = new WebSocketServer({ server: httpServer, path: '/events' })
-wss.on('connection', (socket) => {
+wss.on('connection', (socket, req) => {
+  if (args.token) {
+    try {
+      const host = req.headers.host || '127.0.0.1'
+      const parsedUrl = new URL(req.url, `http://${host}`)
+      const tokenParam = parsedUrl.searchParams.get('token')
+      const authHeader = req.headers['authorization']
+      const valid = tokenParam === args.token || authHeader === `Bearer ${args.token}`
+      if (!valid) {
+        socket.close(4001, 'Unauthorized')
+        return
+      }
+    } catch {
+      socket.close(4001, 'Unauthorized')
+      return
+    }
+  }
   wsClients.add(socket)
   socket.send(JSON.stringify({ type: 'kernel-status', status: kernelStatus, detail: kernelDetail }))
   socket.on('close', () => wsClients.delete(socket))

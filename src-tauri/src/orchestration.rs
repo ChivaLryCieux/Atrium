@@ -344,7 +344,14 @@ async fn post_turn(
     timeout: std::time::Duration,
 ) -> Result<KernelTurnResponse, String> {
     let url = format!("{daemon_url}/v1/turn");
-    let future = http.post(&url).json(request).send();
+    let mut req_builder = http.post(&url).json(request);
+    if let Some(state) = tauri::Manager::try_state::<crate::AppState>(app) {
+        let daemon = state.daemon.lock().await;
+        if let Some(token) = &daemon.connection.token {
+            req_builder = req_builder.bearer_auth(token);
+        }
+    }
+    let future = req_builder.send();
     let response = tokio::time::timeout(timeout, future)
         .await
         .map_err(|_| "节点执行超时（内核熔断保护）".to_string())?

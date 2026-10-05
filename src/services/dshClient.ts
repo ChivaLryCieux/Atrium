@@ -124,7 +124,10 @@ class DshClient {
       this.ws = null;
     }
 
-    const wsUrl = this.connection.url.replace(/^http/, 'ws') + '/events';
+    const baseUrl = this.connection.url.replace(/^http/, 'ws') + '/events';
+    const wsUrl = this.connection.token
+      ? `${baseUrl}?token=${encodeURIComponent(this.connection.token)}`
+      : baseUrl;
     try {
       this.ws = new WebSocket(wsUrl);
 
