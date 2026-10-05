@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 
 export interface HarnessConnectionInfo {
   status: 'standby' | 'ready' | 'connected' | 'stopped' | 'error';
@@ -83,6 +84,8 @@ class DshClient {
   private telemetryListeners: Set<TelemetryListener> = new Set();
   private kernelStatusListeners: Set<KernelStatusListener> = new Set();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private nativeUnlisten: UnlistenFn | null = null;
+  private recentEventKeys: Set<string> = new Set();
 
   async init(): Promise<HarnessConnectionInfo> {
     try {
@@ -91,6 +94,7 @@ class DshClient {
         conn = await invoke<HarnessConnectionInfo>('start_harness_daemon');
       }
       this.connection = conn;
+      this.initNativeMultiplexer();
       this.connectWebSocket();
       return this.connection;
     } catch (error) {
@@ -210,6 +214,59 @@ class DshClient {
   getConnection(): HarnessConnectionInfo {
     return this.connection;
   }
+
+  /**
+   * Star-Topology Multiplexer: listens directly to Tauri's native Rust IPC channel.
+   * Rust mediates the Bridge SSE stream and multiplexes events without requiring
+   * raw TCP WebSocket connectivity, providing resilient offline / reload recovery.
+   */
+  private async initNativeMultiplexer() {
+    if (this.nativeUnlisten) return;
+    try {
+      this.nativeUnlisten = await listen<any>('kernel-stream-event', (event) => {
+        if (event?.payload) {
+          this.dispatchPayload(event.payload, 'ipc');
+        }
+      });
+      console.log('[DshClient] Native Rust IPC event multiplexer registered');
+    } catch (err) {
+      console.debug('[DshClient] Native IPC event listener skipped (web fallback):', err);
+    }
+  }
+
+  private dispatchPayload(payload: any, source: 'ipc' | 'ws' = 'ws') {
+    if (!payload || typeof payload !== 'object') return;
+
+    // Deduplicate identical events received simultaneously over dual channels
+    if (payload.conversationId && (payload.turn !== undefined || payload.step !== undefined)) {
+      const dedupKey = `${payload.type}:${payload.conversationId}:${payload.turn}:${payload.step}:${payload.stageId || ''}:${payload.content?.slice(0, 30) || ''}`;
+      if (this.recentEventKeys.has(dedupKey)) return;
+      this.recentEventKeys.add(dedupKey);
+      if (this.recentEventKeys.size > 200) {
+        // Drop oldest entries
+        const iter = this.recentEventKeys.values();
+        for (let i = 0; i < 50; i++) {
+          const val = iter.next().value;
+          if (val) this.recentEventKeys.delete(val);
+        }
+      }
+    }
+
+    if (payload.type === 'assistant-stream') {
+      this.streamListeners.forEach((fn) => fn(payload));
+    } else if (payload.type === 'tool-event') {
+      this.toolEventListeners.forEach((fn) => fn(payload));
+    } else if (payload.type === 'token-usage') {
+      this.tokenUsageListeners.forEach((fn) => fn(payload));
+    } else if (payload.type === 'agent-status') {
+      this.agentStatusListeners.forEach((fn) => fn(payload));
+    } else if (payload.type === 'telemetry') {
+      this.telemetryListeners.forEach((fn) => fn(payload));
+    } else if (payload.type === 'kernel-status') {
+      this.kernelStatusListeners.forEach((fn) => fn(payload));
+    }
+  }
+
 }
 
 export const dshClient = new DshClient();
