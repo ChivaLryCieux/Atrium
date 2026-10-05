@@ -253,10 +253,10 @@ struct KernelTurnRequest {
     provider: String,
     model: String,
     api_key: String,
-    /// The profile's wire protocol, so the bridge can configure the kernel's
-    /// own `llm-deepseek` row for this route instead of inheriting whatever the
-    /// composition ships. `anthropic-messages` and `openai-chat` are the two
-    /// the kernel adapter can serve.
+    /// The profile's wire protocol, so the bridge can pick the kernel adapter
+    /// for this route: `anthropic-messages` runs on the `llm-deepseek` row
+    /// (Messages only since dsh 0.2), while `openai-chat` and
+    /// `openai-responses` run on `llm-pi-ai`.
     #[serde(skip_serializing_if = "Option::is_none")]
     api_protocol: Option<String>,
     /// Endpoint root for the kernel provider (DEEPSEEK_BASE_URL), already
