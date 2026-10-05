@@ -660,6 +660,7 @@ export function App() {
                     messages={messages}
                     userName={settings?.userName?.trim() || t("app.me")}
                     onCopyMessage={(content) => void copyMessage(content)}
+                    onSendAnswer={(answer) => void handleSend(answer)}
                   />
 
                   {/* Bottom Docked Input Box in Active Chat */}

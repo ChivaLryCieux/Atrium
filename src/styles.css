@@ -5727,3 +5727,302 @@ body.resizing-row * {
   font-size: 12px;
   color: var(--text-secondary);
 }
+
+/* ==========================================================================
+   Interactive Takeover Cards (Approval & Question Decision HUD)
+   Concrete Core Aesthetic
+   ========================================================================== */
+.takeover-card {
+  margin: 12px 0 6px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm, 4px);
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  animation: takeoverFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes takeoverFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.takeover-card.takeover-approval {
+  border-left: 3px solid #f59e0b;
+}
+
+.takeover-card.takeover-question {
+  border-left: 3px solid var(--accent-blue, #3b82f6);
+}
+
+.takeover-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--bg-sidebar);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.takeover-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.question-badge {
+  color: var(--accent-blue, #3b82f6);
+}
+
+.warning-badge {
+  color: #d97706;
+}
+
+.takeover-pulse-dot {
+  width: 7px;
+  height: 7px;
+  background: currentColor;
+  border-radius: 50%;
+  animation: pulseDot 1.4s infinite alternate;
+}
+
+@keyframes pulseDot {
+  from { opacity: 0.4; }
+  to { opacity: 1; }
+}
+
+.takeover-hazard-icon {
+  font-size: 10px;
+}
+
+.takeover-sub-meta {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.takeover-body {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.takeover-warning-notice {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.takeover-command-preview {
+  background: var(--bg-app);
+  border: 1px solid var(--border-subtle);
+  padding: 8px 10px;
+  border-radius: 3px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--text-primary);
+  max-height: 160px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.takeover-question-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.takeover-question-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.takeover-options-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.takeover-option-pill {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  user-select: none;
+}
+
+.takeover-option-pill:hover {
+  background: var(--bg-pill-hover);
+  border-color: var(--border-strong);
+}
+
+.takeover-option-pill.selected {
+  background: var(--bg-pill);
+  border-color: var(--accent-black, #111827);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.takeover-option-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  width: 14px;
+  margin-top: 1px;
+  color: var(--text-secondary);
+}
+
+.takeover-option-content {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.takeover-option-label {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.takeover-rec-tag {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 5px;
+  background: rgba(16, 185, 129, 0.12);
+  color: #059669;
+  border-radius: 2px;
+  text-transform: uppercase;
+}
+
+.takeover-option-desc {
+  width: 100%;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.takeover-custom-input-row {
+  margin-top: 4px;
+}
+
+.takeover-input {
+  width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  background: var(--bg-input, #ffffff);
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.takeover-input:focus {
+  border-color: var(--accent-black, #111827);
+}
+
+.takeover-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 8px 12px;
+  background: var(--bg-sidebar);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.takeover-action-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.takeover-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  user-select: none;
+}
+
+.takeover-action-btn.primary {
+  background: var(--accent-black, #111827);
+  color: var(--accent-on-black, #ffffff);
+  border: 1px solid var(--accent-black, #111827);
+}
+
+.takeover-action-btn.primary:hover {
+  background: var(--accent-black-hover, #374151);
+}
+
+.takeover-btn-hint {
+  font-size: 10px;
+  opacity: 0.6;
+  font-family: var(--font-mono, monospace);
+}
+
+.takeover-action-btn.danger {
+  background: var(--bg-card);
+  border: 1px solid #fca5a5;
+  color: #dc2626;
+}
+
+.takeover-action-btn.danger:hover {
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.takeover-action-btn.success {
+  background: #059669;
+  border: 1px solid #059669;
+  color: #ffffff;
+}
+
+.takeover-action-btn.success:hover {
+  background: #047857;
+}
+
+.takeover-submitted-status,
+.takeover-decision-status {
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--font-mono, monospace);
+  padding: 4px 8px;
+  border-radius: 3px;
+}
+
+.takeover-submitted-status {
+  color: #059669;
+}
+
+.takeover-decision-status.allowed {
+  color: #059669;
+}
+
+.takeover-decision-status.rejected {
+  color: #dc2626;
+}

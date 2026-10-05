@@ -402,5 +402,18 @@
     "refresh": "刷新文件列表",
     "loading": "正在扫描文件...",
     "empty": "暂无文件或目录为空"
+  },
+  "takeover": {
+    "questionBadge": "操作员决策",
+    "approvalRequired": "高危操作需确认",
+    "riskNotice": "智能体请求执行高危外部指令，请核查后做出决策：",
+    "allowOnce": "单次允许执行",
+    "reject": "驳回此操作",
+    "allowedNotice": "已允许该指令执行",
+    "rejectedNotice": "已拒绝该指令执行",
+    "submitAnswer": "确认提交答复",
+    "submitted": "已向智能体提交决策",
+    "recommended": "推荐",
+    "customAnswerPlaceholder": "输入自定义决策或补充说明..."
   }
 }

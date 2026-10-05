@@ -6,6 +6,7 @@ import { Markdown } from "./Markdown";
 import { ReasoningAccordion } from "./ReasoningAccordion";
 import { ToolCallTerminal } from "./ToolCallTerminal";
 import { DeliverablesPanel } from "./DeliverablesPanel";
+import { InteractiveTakeoverCard } from "./InteractiveTakeoverCard";
 
 /**
  * Virtualized message stream (ZCode ConversationTimeline pattern, trimmed
@@ -28,6 +29,8 @@ type MessageStreamProps = {
   /// Display name for the operator (user avatar + title).
   userName: string;
   onCopyMessage: (content: string) => void;
+  onSendAnswer?: (answer: string) => void;
+  onApproveTool?: (callId: string, outcome: "allowed" | "rejected", note?: string) => void;
 };
 
 /// Spacing between message slots; measured into each slot so offset math
@@ -49,7 +52,13 @@ function estimateHeight(message: ChatMessage): number {
   return estimate;
 }
 
-export function MessageStream({ messages, userName, onCopyMessage }: MessageStreamProps) {
+export function MessageStream({
+  messages,
+  userName,
+  onCopyMessage,
+  onSendAnswer,
+  onApproveTool,
+}: MessageStreamProps) {
   const { t } = useTranslation();
   const parentRef = useRef<HTMLDivElement | null>(null);
   const [pinnedToBottom, setPinnedToBottom] = useState(true);
@@ -160,6 +169,14 @@ export function MessageStream({ messages, userName, onCopyMessage }: MessageStre
                       <>
                         <ToolCallTerminal toolCalls={msg.toolCalls} />
                         <DeliverablesPanel toolCalls={msg.toolCalls} />
+                        {msg.toolCalls.map((tc) => (
+                          <InteractiveTakeoverCard
+                            key={`takeover-${tc.id || tc.name}`}
+                            toolCall={tc}
+                            onAnswerQuestion={onSendAnswer}
+                            onApprove={onApproveTool}
+                          />
+                        ))}
                       </>
                     )}
                     {(!msg.pending ||

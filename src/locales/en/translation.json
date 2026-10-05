@@ -402,5 +402,18 @@
     "refresh": "Refresh Files",
     "loading": "Scanning files...",
     "empty": "No files or directory is empty"
+  },
+  "takeover": {
+    "questionBadge": "Operator Decision",
+    "approvalRequired": "Operator Approval Required",
+    "riskNotice": "Agent is requesting execution of external operations. Review and confirm:",
+    "allowOnce": "Allow Once",
+    "reject": "Reject Operation",
+    "allowedNotice": "Execution allowed by operator",
+    "rejectedNotice": "Execution rejected by operator",
+    "submitAnswer": "Submit Decision",
+    "submitted": "Decision submitted to agent",
+    "recommended": "Recommended",
+    "customAnswerPlaceholder": "Type custom decision or additional instructions..."
   }
 }

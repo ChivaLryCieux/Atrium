@@ -46,15 +46,16 @@ export type SendPipelineDeps = {
  * (token high-water-mark, toolCalls, reasoning) → persist.
  */
 export function useSendMessage(deps: SendPipelineDeps) {
-  const handleSend = async () => {
-    await sendPipeline(deps);
+  const handleSend = async (overrideText?: string) => {
+    await sendPipeline(deps, overrideText);
   };
   return { handleSend };
 }
 
-async function sendPipeline(d: SendPipelineDeps) {
+async function sendPipeline(d: SendPipelineDeps, overrideText?: string) {
   const { settings, activeProfile, t } = d;
-  if (!d.draft.trim() || !activeProfile || !settings || d.isSending) return;
+  const content = (overrideText !== undefined ? overrideText : d.draft).trim();
+  if (!content || !activeProfile || !settings || d.isSending) return;
 
   let curSessionId = d.activeSessionId;
   if (!curSessionId) {
@@ -65,11 +66,13 @@ async function sendPipeline(d: SendPipelineDeps) {
   }
   dshClient.ensureConnected();
 
-  const userMessage = createUserMessage(d.draft.trim(), settings.userName || "Tempsyche");
+  const userMessage = createUserMessage(content, settings.userName || "Tempsyche");
   const baseMessages = [...d.messages, userMessage];
   const pendingMessages = buildPendingMessages(d, t);
 
-  d.setDraft("");
+  if (overrideText === undefined) {
+    d.setDraft("");
+  }
   d.isSendingRef.current = true;
   d.setIsSending(true);
   d.setMessages([...baseMessages, ...pendingMessages]);
