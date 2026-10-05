@@ -5,6 +5,7 @@ import { ChatMessage } from "../types/chat";
 import { Markdown } from "./Markdown";
 import { ReasoningAccordion } from "./ReasoningAccordion";
 import { ToolCallTerminal } from "./ToolCallTerminal";
+import { DeliverablesPanel } from "./DeliverablesPanel";
 
 /**
  * Virtualized message stream (ZCode ConversationTimeline pattern, trimmed
@@ -156,7 +157,10 @@ export function MessageStream({ messages, userName, onCopyMessage }: MessageStre
                       ) : null
                     )}
                     {msg.toolCalls && msg.toolCalls.length > 0 && (
-                      <ToolCallTerminal toolCalls={msg.toolCalls} />
+                      <>
+                        <ToolCallTerminal toolCalls={msg.toolCalls} />
+                        <DeliverablesPanel toolCalls={msg.toolCalls} />
+                      </>
                     )}
                     {(!msg.pending ||
                       (msg.content !== t("app.thinking") &&
