@@ -34,10 +34,11 @@ import { WebSocketServer } from 'ws'
 // ── CLI arguments ──────────────────────────────────────────────
 
 function parseArgs(argv) {
-  const args = { port: 19387, host: '127.0.0.1', dshRoot: null, kernelExe: null, appVersion: null, patch: [], workspace: null, dshHome: null, token: null }
+  const args = { port: 19387, host: '127.0.0.1', pipe: null, dshRoot: null, kernelExe: null, appVersion: null, patch: [], workspace: null, dshHome: null, token: null }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
-    if (a === '--token') args.token = String(argv[++i])
+    if (a === '--pipe') args.pipe = String(argv[++i])
+    else if (a === '--token') args.token = String(argv[++i])
     else if (a === '--port') args.port = Number(argv[++i])
     else if (a === '--host') args.host = argv[++i]
     else if (a === '--dsh-root') args.dshRoot = resolve(argv[++i])

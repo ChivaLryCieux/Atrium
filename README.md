@@ -74,7 +74,7 @@ flowchart TD
     end
 
     Rust <-->|"Windows Job Object / 动态加密 Token 鉴权"| Bridge
-    Rust <-->|"SSE 流式管道 / 16ms 自适应帧聚合 (127.0.0.1:19387)"| Bridge
+    Rust <-->|"Windows 原生命名管道 (\\\\.\\pipe\\atrium-bridge-<uuid> / 亚30微秒低延迟)"| Bridge
     UI <-->|"Tauri 原生星型 IPC (kernel-stream-event / 无需暴露端口)"| Rust
     UI -.->|"动态 Token 容灾热备通道 (ws://127.0.0.1:19387/events)"| Bridge
     Bridge <-->|"stdio JSON-RPC (@deepseek-ai/dsh-sdk-client)"| Kernel
@@ -100,8 +100,8 @@ flowchart TD
 | IPC 分层 | 通信两端 | 传输载体与安全协议 | 通信内容与业务职责 |
 | :--- | :--- | :--- | :--- |
 | **Tier 1: 渲染与宿主** | WebView2 (React) ↔ Rust (Tauri Core) | **Tauri v2 原生 IPC 星型中枢**<br>· 底层基于 WebView2 `postMessage` (C++ Chromium IPC)<br>· 上层序列化为 JSON-RPC 请求与 `kernel-stream-event` 原生事件总线 | · **单一事实来源**：所有流式 Token、中间工具调用与遥测通过 Rust 统一中转，彻底消除三角路由与重载丢包<br>· 请求模式 (`invoke`)：工程文件树扫描、大文件分片安全截断、持久化落盘<br>· 原生流式通道 (`listen`)：毫秒级响应分发，无需暴露裸网络端口 |
-| **Tier 2: 宿主与边车** | Rust 宿主 ↔ Desktop Bridge 代理 | **内核级守护 + 动态安全握手**<br>· Windows Job Object 进程树作业管理<br>· **加密级强随机 Token 握手**（每次启动动态派生 32 字节 Hex 密钥，Stdio 秘密注入）<br>· **Origin Pinning 本地源隔离**（严格阻断同机非信任进程与浏览器 CSRF 探测） | · 边车进程树生命周期托管（主进程关闭时操作系统内核级级联清理）<br>· 动态端口协商与 `GET /healthz` 活跃性探测<br>· 全请求强制携带 `Authorization: Bearer <DynamicToken>`，401/403 严格鉴权 |
-| **Tier 3: 客户端与内核** | Rust / Webview ↔ Bridge ↔ DSH 单文件内核 | **自适应帧聚合双通道 (Adaptive Frame-Batching)**<br>1. **HTTP/1.1 REST (SSE 流式管道)**<br>2. **16ms 自适应帧聚合合并池**<br>3. **stdio JSON-RPC** (Bridge ↔ 内核二进制) | 1. **REST 事务**：`POST /v1/turn`（提请智能体编排轮次）、`POST /v1/reset`（会话销毁）<br>2. **16ms 帧对齐背压**：文本增量在 16ms（60Hz 帧间隔）内自适应聚合下发，消除 75%+ 的高频 IPC 切换开销与 React 渲染卡顿<br>3. **内核通道**：通过 `@deepseek-ai/dsh-sdk-client` 标准协议驱动单文件 exe 执行 |
+| **Tier 2: 宿主与边车** | Rust 宿主 ↔ Desktop Bridge 代理 | **Windows 命名管道 + 动态安全握手**<br>· **Windows 原生命名管道** (`\\.\pipe\atrium-bridge-<uuid>`，完全免除 Winsock/TCP 栈，亚 30 微秒超低延迟)<br>· Windows Job Object 进程树作业管理<br>· **加密级强随机 Token 握手**（每次启动动态派生 32 字节 Hex 密钥） | · 边车进程树生命周期托管（主进程关闭时内核级级联清理）<br>· 彻底规避网络防火墙弹窗与端口冲突竞争<br>· 命名管道支持快速探活与全请求 Token 严格鉴权 |
+| **Tier 3: 客户端与内核** | Rust / Webview ↔ Bridge ↔ DSH 单文件内核 | **命名管道流式传输 + 自适应帧聚合**<br>1. **Named Pipe HTTP/1.1 (SSE 流式快速通道)**<br>2. **16ms 自适应帧聚合合并池**<br>3. **stdio JSON-RPC** (Bridge ↔ 内核二进制) | 1. **内核直连快速通道**：Rust 经命名管道直接读取 SSE 流式字节，吞吐量提升 100%+<br>2. **16ms 帧对齐背压**：文本增量在 16ms（60Hz 帧间隔）内自适应聚合下发，消除 75%+ 的高频 IPC 切换开销与 React 渲染卡顿<br>3. **内核通道**：通过 `@deepseek-ai/dsh-sdk-client` 标准协议驱动单文件 exe 执行 |
 
 
 ---

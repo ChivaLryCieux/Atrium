@@ -204,3 +204,47 @@ pub struct WorkspaceEntry {
     pub children: Option<Vec<WorkspaceEntry>>,
 }
 
+
+// ─── Kernel Turn Payloads ──────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KernelUsageInfo {
+    #[serde(default)]
+    pub input_tokens: Option<u64>,
+    #[serde(default)]
+    pub output_tokens: Option<u64>,
+    #[serde(default)]
+    pub total_tokens: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KernelTurnResponse {
+    #[serde(default)]
+    pub session_id: String,
+    #[serde(default)]
+    pub final_response: String,
+    #[serde(default)]
+    pub reasoning_content: Option<String>,
+    #[serde(default)]
+    pub input_tokens: Option<u64>,
+    #[serde(default)]
+    pub output_tokens: Option<u64>,
+    #[serde(default)]
+    pub usage: Option<KernelUsageInfo>,
+    #[serde(default)]
+    pub tool_calls: Option<Vec<ToolCallRecord>>,
+    #[serde(default)]
+    pub kernel_route: Option<String>,
+}
+
+impl KernelTurnResponse {
+    pub fn get_input_tokens(&self) -> Option<u64> {
+        self.input_tokens.or_else(|| self.usage.as_ref().and_then(|u| u.input_tokens))
+    }
+
+    pub fn get_output_tokens(&self) -> Option<u64> {
+        self.output_tokens.or_else(|| self.usage.as_ref().and_then(|u| u.output_tokens))
+    }
+}

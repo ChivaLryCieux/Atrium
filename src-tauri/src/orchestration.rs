@@ -9,7 +9,8 @@ use uuid::Uuid;
 
 use crate::daemon::DshDaemon;
 use crate::models::{
-    AiProfile, ChatMessage, OrchestrationProgress, OrchestrationStage,
+    AiProfile, ChatMessage, KernelTurnResponse, KernelUsageInfo, OrchestrationProgress,
+    OrchestrationStage,
 };
 
 // ─── Default single-conversation engine ────────────────────────
@@ -275,47 +276,7 @@ struct KernelTurnRequest {
     prompt: String,
 }
 
-#[derive(serde::Deserialize, Default, Clone)]
-#[serde(rename_all = "camelCase")]
-struct KernelUsageInfo {
-    #[serde(default)]
-    input_tokens: Option<u64>,
-    #[serde(default)]
-    output_tokens: Option<u64>,
-    #[serde(default)]
-    #[allow(dead_code)]
-    total_tokens: Option<u64>,
-}
 
-#[derive(serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct KernelTurnResponse {
-    #[serde(default)]
-    #[allow(dead_code)]
-    session_id: String,
-    #[serde(default)]
-    final_response: String,
-    #[serde(default)]
-    reasoning_content: Option<String>,
-    #[serde(default)]
-    input_tokens: Option<u64>,
-    #[serde(default)]
-    output_tokens: Option<u64>,
-    #[serde(default)]
-    usage: Option<KernelUsageInfo>,
-    #[serde(default)]
-    tool_calls: Option<Vec<crate::models::ToolCallRecord>>,
-}
-
-impl KernelTurnResponse {
-    fn get_input_tokens(&self) -> Option<u64> {
-        self.input_tokens.or_else(|| self.usage.as_ref().and_then(|u| u.input_tokens))
-    }
-
-    fn get_output_tokens(&self) -> Option<u64> {
-        self.output_tokens.or_else(|| self.usage.as_ref().and_then(|u| u.output_tokens))
-    }
-}
 
 /// Find the boundary of the next complete SSE message in a byte buffer.
 /// Matches either `\n\n` (len 2) or `\r\n\r\n` (len 4).
@@ -343,6 +304,36 @@ async fn post_turn(
     request: &KernelTurnRequest,
     timeout: std::time::Duration,
 ) -> Result<KernelTurnResponse, String> {
+    #[cfg(target_os = "windows")]
+    {
+        let pipe_target = if let Some(state) = tauri::Manager::try_state::<crate::AppState>(app) {
+            let daemon = state.daemon.lock().await;
+            daemon.connection.pipe.clone().map(|p| (p, daemon.connection.token.clone()))
+        } else {
+            None
+        };
+
+        if let Some((pipe_name, token)) = pipe_target {
+            if let Ok(body_json) = serde_json::to_string(request) {
+                match crate::named_pipe_http::post_turn_via_pipe(
+                    app,
+                    &pipe_name,
+                    token.as_deref(),
+                    &body_json,
+                    timeout,
+                ).await {
+                    Ok(mut pipe_response) => {
+                        pipe_response.kernel_route = Some(format!("named_pipe:{pipe_name}"));
+                        return Ok(pipe_response);
+                    }
+                    Err(pipe_err) => {
+                        eprintln!("[ATRIUM_IPC] Named pipe fast-path degraded: {pipe_err}, falling back to loopback TCP");
+                    }
+                }
+            }
+        }
+    }
+
     let url = format!("{daemon_url}/v1/turn");
     let mut req_builder = http.post(&url).json(request);
     if let Some(state) = tauri::Manager::try_state::<crate::AppState>(app) {
@@ -502,6 +493,7 @@ async fn post_turn(
                                     output_tokens: None,
                                     usage,
                                     tool_calls,
+                                    kernel_route: None,
                                 });
                             }
                         }
@@ -542,6 +534,7 @@ async fn post_turn(
             output_tokens: None,
             usage: None,
             tool_calls: if stream_tool_calls.is_empty() { None } else { Some(stream_tool_calls) },
+            kernel_route: None,
         });
     }
 

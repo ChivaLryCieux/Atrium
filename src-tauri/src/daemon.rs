@@ -85,6 +85,7 @@ pub struct HarnessConnection {
     pub url: String,
     pub port: u16,
     pub token: Option<String>,
+    pub pipe: Option<String>,
     pub pid: Option<u32>,
     pub message: Option<String>,
 }
@@ -96,6 +97,7 @@ impl Default for HarnessConnection {
             url: "http://127.0.0.1:19387".to_string(),
             port: 19387,
             token: None,
+            pipe: None,
             pid: None,
             message: Some("Kernel bridge not started yet".to_string()),
         }
@@ -276,6 +278,7 @@ impl DshDaemon {
                 url: format!("http://127.0.0.1:{port}"),
                 port,
                 token: Some("atrium-session-token".to_string()),
+                pipe: None,
                 pid: None,
                 message: self.connection.message.clone(),
             };
@@ -306,10 +309,19 @@ impl DshDaemon {
             .map(|d| d.to_string_lossy().to_string());
 
         let dynamic_token = format!("atrium-{}", uuid::Uuid::new_v4().simple());
+        #[cfg(target_os = "windows")]
+        let pipe_name = format!(r"\\.\pipe\atrium-bridge-{}", uuid::Uuid::new_v4().simple());
+
         let mut command = Command::new(&paths.node_bin);
         command
             .arg(&paths.script)
-            .arg("--token").arg(&dynamic_token)
+            .arg("--token").arg(&dynamic_token);
+
+        #[cfg(target_os = "windows")]
+        {
+            command.arg("--pipe").arg(&pipe_name);
+        }
+        command
             .arg("--port").arg(port.to_string())
             .arg("--host").arg("127.0.0.1")
             .arg("--app-version").arg(env!("CARGO_PKG_VERSION"))
@@ -357,14 +369,28 @@ impl DshDaemon {
             std::thread::spawn(move || log_stream("bridge:stderr", stderr));
         }
 
+        #[cfg(target_os = "windows")]
+        let outcome = match crate::named_pipe_http::probe_pipe_health(&pipe_name, std::time::Duration::from_secs(20)).await {
+            crate::named_pipe_http::PipeHealthOutcome::Ready => HealthOutcome::Ready,
+            crate::named_pipe_http::PipeHealthOutcome::KernelMissing(detail) => HealthOutcome::KernelMissing(detail),
+            crate::named_pipe_http::PipeHealthOutcome::Unreachable => Self::wait_for_health(http, port, 20).await,
+        };
+        #[cfg(not(target_os = "windows"))]
         let outcome = Self::wait_for_health(http, port, 20).await;
+
         self.apply_health_outcome(outcome);
+
+        #[cfg(target_os = "windows")]
+        let pipe_opt = Some(pipe_name);
+        #[cfg(not(target_os = "windows"))]
+        let pipe_opt = None;
 
         let conn = HarnessConnection {
             status: self.connection.status.clone(),
             url: format!("http://127.0.0.1:{port}"),
             port,
             token: Some(dynamic_token),
+            pipe: pipe_opt,
             pid: Some(pid),
             message: self.connection.message.clone(),
         };

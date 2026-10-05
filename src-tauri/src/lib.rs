@@ -7,6 +7,7 @@ mod orchestration;
 mod storage;
 mod terminal;
 pub mod tokens;
+pub mod named_pipe_http;
 
 use std::sync::Arc;
 use reqwest::Client;
