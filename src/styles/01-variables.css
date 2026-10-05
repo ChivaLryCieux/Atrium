@@ -1,0 +1,156 @@
+/* ==========================================================================
+   Atrium // ZCode Minimalist Light Theme (1:1 Replica)
+   ========================================================================== */
+
+/* Self-hosted fonts (OFL 1.1 — provenance & licenses in public/fonts/).
+   Latin: Linux Biolinum · CJK: Noto Sans SC (Source Han Sans) · Code: JetBrains Mono */
+@font-face {
+  font-family: "Noto Sans SC";
+  src: url("/fonts/NotoSansSC-variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Linux Biolinum";
+  src: url("/fonts/LinBiolinum_R.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Linux Biolinum";
+  src: url("/fonts/LinBiolinum_B.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Linux Biolinum";
+  src: url("/fonts/LinBiolinum_I.woff2") format("woff2");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/fonts/JetBrainsMono-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/fonts/JetBrainsMono-Medium.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/fonts/JetBrainsMono-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ==========================================================================
+   Theme: 纯净白 (pure-white) — the base light theme.
+   :root carries the pure-white tokens; other theme blocks below override
+   only what differs. The active theme is selected by data-theme on <html>.
+   ========================================================================== */
+:root {
+  --font-sans: "Linux Biolinum", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", Consolas, Menlo, monospace;
+
+  /* JetBrains Clean Palette: Pure White Viewport, Warm Ivory (#FCF9F4) Island Cards */
+  --bg-app: #ffffff;
+  --bg-sidebar: #F7F8F9;
+  --bg-sidebar-hover: #F2EDE4;
+  --bg-sidebar-active: #E8E0D2;
+  --bg-card: #ffffff;
+  --bg-input: #ffffff;
+  --bg-pill: #EDE7DE;
+  --bg-pill-hover: #E4DDD1;
+  --bg-pill-active: #ffffff;
+  --bg-stage-fade: rgba(252, 249, 244, 0.85);
+
+  /* Borders & Dividers (Harmonized with #FCF9F4) */
+  --border-subtle: #EDE7DE;
+  --border-default: #DFD8CB;
+  --border-strong: #C8C1B4;
+  --border-focus: #18181b;
+
+  /* Typography */
+  --text-primary: #18181b;
+  --text-secondary: #52525b;
+  --text-muted: #71717a;
+  --text-placeholder: #a1a1aa;
+  --text-disabled: #d4d4d8;
+
+  /* Brand Accents */
+  --accent-black: #18181b;
+  --accent-black-hover: #27272a;
+  --accent-on-black: #ffffff;
+  --accent-blue: #2563eb;
+  --accent-danger: #ef4444;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+  --shadow-card: 0 10px 30px -4px rgba(0, 0, 0, 0.04), 0 4px 12px -2px rgba(0, 0, 0, 0.02);
+  --shadow-modal: 0 20px 40px -10px rgba(0, 0, 0, 0.1);
+
+  /* Radii */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 9999px;
+
+  /* Smooth High-DPI Vector Cursors */
+  --cursor-col-resize: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none'%3E%3Cpath d='M12 4.5v15M7 8.5L3.5 12l3.5 3.5M3.5 12H9M17 8.5L20.5 12l-3.5 3.5M20.5 12H15' stroke='%23000000' stroke-opacity='0.28' stroke-width='4' stroke-linecap='round' stroke-linejoin='round' transform='translate(0, 0.75)'/%3E%3Cpath d='M12 4.5v15M7 8.5L3.5 12l3.5 3.5M3.5 12H9M17 8.5L20.5 12l-3.5 3.5M20.5 12H15' stroke='%23ffffff' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M12 4.5v15M7 8.5L3.5 12l3.5 3.5M3.5 12H9M17 8.5L20.5 12l-3.5 3.5M20.5 12H15' stroke='%2318181b' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") 12 12, col-resize;
+  --cursor-row-resize: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none'%3E%3Cpath d='M4.5 12h15M8.5 7L12 3.5l3.5 3.5M12 3.5V9M8.5 17L12 20.5l3.5-3.5M12 20.5V15' stroke='%23000000' stroke-opacity='0.28' stroke-width='4' stroke-linecap='round' stroke-linejoin='round' transform='translate(0, 0.75)'/%3E%3Cpath d='M4.5 12h15M8.5 7L12 3.5l3.5 3.5M12 3.5V9M8.5 17L12 20.5l3.5-3.5M12 20.5V15' stroke='%23ffffff' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M4.5 12h15M8.5 7L12 3.5l3.5 3.5M12 3.5V9M8.5 17L12 20.5l3.5-3.5M12 20.5V15' stroke='%2318181b' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") 12 12, row-resize;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: var(--bg-app);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom Drag Region for Frameless Window */
+[data-tauri-drag-region] {
+  -webkit-app-region: drag;
+}
+
+button, input, textarea, select, [role="button"], a {
+  -webkit-app-region: no-drag;
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #e4e4e7;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #d4d4d8;
+}

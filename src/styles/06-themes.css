@@ -1,0 +1,157 @@
+/* ==========================================================================
+   Theme: 纯净黑 (pure-black) — variable overrides over the pure-white base
+   ========================================================================== */
+[data-theme="pure-black"] {
+  --bg-app: #141416;
+  --bg-sidebar: #1e1f22;
+  --bg-sidebar-hover: #26282d;
+  --bg-sidebar-active: #2f3137;
+  --bg-card: #25272c;
+  --bg-input: #26282c;
+  --bg-pill: #2a2c31;
+  --bg-pill-hover: #34373d;
+  --bg-pill-active: #26282c;
+  --bg-stage-fade: rgba(30, 31, 34, 0.85);
+
+  --border-subtle: #2b2d30;
+  --border-default: #393b40;
+  --border-strong: #4e5157;
+  --border-focus: #f4f4f5;
+
+  --text-primary: #f4f4f5;
+  --text-secondary: #b9b9c0;
+  --text-muted: #8e8e96;
+  --text-placeholder: #6a6a72;
+  --text-disabled: #4a4a52;
+
+  --accent-black: #f4f4f5;
+  --accent-black-hover: #d4d4d8;
+  --accent-on-black: #161618;
+  --shadow-card: 0 10px 30px -4px rgba(0, 0, 0, 0.4), 0 4px 12px -2px rgba(0, 0, 0, 0.3);
+  --shadow-modal: 0 20px 40px -10px rgba(0, 0, 0, 0.6);
+}
+
+/* ==========================================================================
+   Theme: 中庭彩 (atrium-color) — 纯净白的完整副本（快照）。
+   以下变量值为纯净白在主题系统建立时的完整快照：纯净白后续的改动不会
+   影响本主题。设计迭代时直接修改此块内的值即可；:root 新增的 token 在
+   被此处覆写之前会继承下来。
+   ========================================================================== */
+[data-theme="atrium-color"] {
+  --font-sans: "Linux Biolinum", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", Consolas, Menlo, monospace;
+
+  /* JetBrains Clean Palette: Pure White Viewport, Warm Ivory (#FCF9F4) Island Cards */
+  --bg-app: #ffffff;
+  --bg-sidebar: #FCF9F4;
+  --bg-sidebar-hover: #F2EDE4;
+  --bg-sidebar-active: #E8E0D2;
+  --bg-card: #ffffff;
+  --bg-input: #ffffff;
+  --bg-pill: #EDE7DE;
+  --bg-pill-hover: #E4DDD1;
+  --bg-pill-active: #ffffff;
+  --bg-stage-fade: rgba(252, 249, 244, 0.85);
+
+  /* Borders & Dividers */
+  --border-subtle: #EDE7DE;
+  --border-default: #DFD8CB;
+  --border-strong: #C8C1B4;
+  --border-focus: #18181b;
+
+  /* Typography */
+  --text-primary: #18181b;
+  --text-secondary: #52525b;
+  --text-muted: #71717a;
+  --text-placeholder: #a1a1aa;
+  --text-disabled: #d4d4d8;
+
+  /* Brand Accents */
+  --accent-black: #18181b;
+  --accent-black-hover: #27272a;
+  --accent-on-black: #ffffff;
+  --accent-blue: #2563eb;
+  --accent-danger: #ef4444;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+  --shadow-card: 0 10px 30px -4px rgba(0, 0, 0, 0.04), 0 4px 12px -2px rgba(0, 0, 0, 0.02);
+  --shadow-modal: 0 20px 40px -10px rgba(0, 0, 0, 0.1);
+
+  /* Radii */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 9999px;
+}
+
+/* ─── Provider editor (custom-only model settings) ─────────── */
+.provider-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.provider-text .provider-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.provider-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.model-edit-row {
+  display: grid;
+  grid-template-columns: 1fr 160px 28px;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 12px;
+}
+
+.model-edit-row .zcode-input,
+.model-edit-row .zcode-select {
+  height: 30px;
+  font-size: 12px;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.model-row-remove {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-xs);
+  font-size: 12px;
+  justify-self: center;
+}
+
+.model-row-remove:hover {
+  color: var(--accent-danger);
+  background: var(--bg-pill);
+}
+
+.detail-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-subtle);
+  margin-top: 4px;
+}

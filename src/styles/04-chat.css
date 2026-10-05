@@ -1,0 +1,511 @@
+/* Active Conversation View */
+.chat-conversation-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  height: 100%;
+  overflow: hidden;
+  position: relative;
+  z-index: 1;
+}
+
+.chat-message-stream {
+  flex: 1;
+  overflow-y: auto;
+  position: relative;
+  /* Reserve 220px on the right so dialogue bubbles never collide or intersect with StageTelemetryHud */
+  padding: 24px 220px 24px 32px;
+  /* Virtualized stream: rows are absolutely positioned slots inside the
+     sizer, so the classic flex column + gap no longer applies. The 24px top
+     padding is mirrored by the virtualizer's scrollMargin. */
+}
+
+.chat-message-sizer {
+  position: relative;
+  width: 100%;
+}
+
+.message-row-slot {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  will-change: transform;
+}
+
+.message-bubble-row {
+  display: flex;
+  gap: 10px;
+  max-width: 860px;
+  margin: 0 auto;
+  width: 100%;
+  align-items: flex-start;
+}
+
+.message-bubble-row.user {
+  justify-content: flex-end;
+}
+
+/* ── WeChat-style avatars ── */
+.chat-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  user-select: none;
+}
+
+.user-avatar {
+  background: var(--accent-black);
+  color: var(--accent-on-black);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.ai-avatar {
+  background: transparent;
+  border: none;
+}
+
+.ai-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+/* ── Chat bubbles: fully rounded, no tails ── */
+.bubble-body {
+  position: relative;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.bubble-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.user-bubble {
+  background: var(--bg-pill);
+  color: var(--text-primary);
+  border-radius: 12px;
+  padding: 10px 14px;
+  max-width: 72%;
+}
+
+.ai-bubble {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  padding: 12px 16px;
+  max-width: 78%;
+  box-shadow: var(--shadow-sm);
+  line-height: 1.7;
+}
+
+.message-bubble-row.assistant.error .ai-bubble {
+  border-color: var(--accent-danger);
+}
+
+.speaker-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.speaker-name {
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.thinking-hint {
+  color: var(--text-placeholder);
+  font-weight: 400;
+}
+
+/* ── Markdown body inside AI bubbles ──
+   react-markdown renders plain elements; these rules keep them inside
+   the bubble width and on the theme tokens. */
+.md-body {
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.md-body > *:first-child {
+  margin-top: 0;
+}
+
+.md-body > *:last-child {
+  margin-bottom: 0;
+}
+
+.md-body p {
+  margin: 0 0 8px;
+}
+
+.md-body p:last-child {
+  margin-bottom: 0;
+}
+
+.md-body h1,
+.md-body h2,
+.md-body h3,
+.md-body h4 {
+  margin: 12px 0 6px;
+  line-height: 1.4;
+  color: var(--text-primary);
+}
+
+.md-body h1:first-child,
+.md-body h2:first-child,
+.md-body h3:first-child {
+  margin-top: 0;
+}
+
+.md-body h1 { font-size: 17px; }
+.md-body h2 { font-size: 16px; }
+.md-body h3 { font-size: 15px; }
+.md-body h4 { font-size: 14px; }
+
+.md-body strong {
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.md-body em {
+  font-style: italic;
+}
+
+.md-body ul,
+.md-body ol {
+  margin: 4px 0 8px;
+  padding-left: 20px;
+}
+
+.md-body li {
+  margin: 2px 0;
+  line-height: 1.6;
+}
+
+.md-body li + li {
+  margin-top: 3px;
+}
+
+.md-body li > p {
+  margin: 0;
+}
+
+.md-body li > p + p {
+  margin-top: 4px;
+}
+
+.md-body li > ul,
+.md-body li > ol {
+  margin: 2px 0;
+}
+
+.md-body blockquote {
+  margin: 8px 0;
+  padding: 6px 12px;
+  border-left: 3px solid var(--border-strong);
+  background: var(--bg-pill);
+  border-radius: 0 8px 8px 0;
+  color: var(--text-secondary);
+}
+
+.md-body blockquote p {
+  margin-bottom: 4px;
+}
+
+.md-body a {
+  color: var(--accent-blue);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  word-break: break-all;
+}
+
+.md-body code {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  background: var(--bg-pill);
+  border-radius: 4px;
+  padding: 1px 5px;
+  word-break: break-word;
+}
+
+.md-body pre {
+  margin: 8px 0;
+  padding: 10px 12px;
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  border-radius: 8px;
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.md-body pre::-webkit-scrollbar {
+  height: 5px;
+}
+
+.md-body pre::-webkit-scrollbar-thumb {
+  background: var(--border-subtle);
+  border-radius: 4px;
+}
+
+.md-body pre code {
+  background: transparent;
+  padding: 0;
+  color: var(--text-primary);
+  word-break: normal;
+  overflow-wrap: normal;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.md-body table {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  margin: 8px 0;
+  font-size: 13px;
+}
+
+.md-body th,
+.md-body td {
+  border: 1px solid var(--border-default);
+  padding: 6px 10px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.md-body thead th {
+  background: var(--bg-pill);
+  font-weight: 600;
+}
+
+.md-body hr {
+  border: none;
+  border-top: 1px solid var(--border-default);
+  margin: 12px 0;
+}
+
+.md-body img {
+  max-width: 100%;
+  border-radius: 8px;
+  display: block;
+  margin: 8px 0;
+}
+
+.md-body input[type="checkbox"] {
+  margin-right: 6px;
+  accent-color: var(--accent-blue);
+}
+
+.node-badge {
+  padding: 2px 6px;
+  background: var(--bg-pill);
+  border-radius: var(--radius-xs);
+  font-size: 11px;
+  color: #3b82f6;
+  font-family: var(--font-mono);
+}
+
+.chat-docked-input {
+  display: flex;
+  justify-content: center;
+  padding: 16px 220px 20px 32px;
+  position: relative;
+  z-index: 2;
+}
+
+/* Align the docked prompt card with the message stream: its left edge
+   matches the AI bubble column (avatar + bubble) and its right edge
+   matches the user bubble column — both live on the same 860px grid,
+   so the card just adopts the same max-width wrapper with its own
+   padding subtracted (24px side padding on the stream). */
+.chat-docked-input > .prompt-card {
+  max-width: min(860px, 92%);
+  width: 860px;
+}
+
+/* Modal Overlay for Settings / Help */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  backdrop-filter: blur(2px);
+}
+
+.modal-dialog {
+  width: 540px;
+  max-width: 90vw;
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-modal);
+  border: 1px solid var(--border-default);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.modal-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.modal-body {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-field label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.form-field input, .form-field select {
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input, #ffffff);
+  font-size: 13px;
+  color: var(--text-primary);
+  outline: none;
+}
+
+.form-field input:focus, .form-field select:focus {
+  border-color: var(--accent-black);
+}
+
+.modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--border-subtle);
+  background: #fafafa;
+}
+
+/* About / Charter dialog (question-mark button) */
+.about-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.about-tab {
+  flex: 1;
+  padding: 11px 0 9px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 2px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.about-tab:hover {
+  color: var(--text-secondary);
+}
+
+.about-tab.active {
+  color: var(--accent-black);
+  border-bottom-color: var(--accent-black);
+  font-weight: 600;
+}
+
+.about-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  background: #fafafa;
+  border: 1px solid var(--border-subtle);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.about-placeholder {
+  border: 1px dashed var(--border-default);
+  padding: 14px 16px;
+  font-size: 13px;
+  line-height: 1.8;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+}
+
+.about-placeholder.charter {
+  line-height: 1.9;
+}
+
+.btn-secondary {
+  padding: 6px 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.btn-secondary:hover {
+  background: #f4f4f5;
+  color: var(--text-primary);
+}
+
+.btn-primary {
+  padding: 6px 16px;
+  background: var(--accent-black);
+  border: 1px solid var(--accent-black);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--accent-on-black, #ffffff);
+  cursor: pointer;
+}
+
+.btn-primary:hover {
+  background: var(--accent-black-hover);
+}

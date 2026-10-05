@@ -45,18 +45,13 @@ export const GoalBar: React.FC<GoalBarProps> = ({
     }
   };
 
+  const cleanGoalText = goalText ? goalText.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, "").trim() : "";
+
   return (
     <div className={`goal-bar-dock ${isStreaming ? "is-active" : ""}`}>
       <div className="goal-bar-inner">
-        {/* Left icon & tag */}
+        {/* Left tag */}
         <div className="goal-badge-group">
-          <span className="goal-target-icon" aria-hidden="true">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10" />
-              <circle cx="12" cy="12" r="6" />
-              <circle cx="12" cy="12" r="2" />
-            </svg>
-          </span>
           <span className="goal-badge-label">
             {t("goal.objective")}
           </span>
@@ -83,10 +78,10 @@ export const GoalBar: React.FC<GoalBarProps> = ({
           ) : (
             <span
               className={`goal-text-display ${isCollapsed ? "collapsed" : ""}`}
-              title={goalText}
+              title={cleanGoalText}
               onClick={() => setIsEditing(true)}
             >
-              {goalText}
+              {cleanGoalText}
             </span>
           )}
         </div>

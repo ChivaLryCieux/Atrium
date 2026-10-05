@@ -1,0 +1,533 @@
+/* App Shell Layout */
+.app-container {
+  display: flex;
+  flex-direction: column;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background-color: var(--bg-app);
+}
+
+/* Top Window Header */
+.top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 40px;
+  padding: 0 12px;
+  background-color: var(--bg-app);
+  border-bottom: 1px solid transparent;
+  user-select: none;
+  z-index: 50;
+}
+
+.top-bar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.app-logo-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.app-logo-icon {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  display: block;
+}
+
+.top-bar-project-title {
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+  line-height: 1;
+  user-select: none;
+  margin-left: 2px;
+  cursor: default;
+}
+
+.top-bar-project-title .brand-prefix {
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.15px;
+}
+
+.top-bar-project-title .project-name-text {
+  font-weight: 500;
+  color: var(--text-secondary);
+  max-width: 260px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.history-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.nav-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-xs);
+  color: var(--text-placeholder);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.nav-btn:hover:not(:disabled) {
+  background: var(--bg-pill-hover);
+  color: var(--text-primary);
+}
+
+.nav-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.top-bar-center {
+  flex: 1;
+  height: 100%;
+}
+
+.top-bar-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-xs);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.icon-btn:hover {
+  background: var(--bg-pill);
+  color: var(--text-primary);
+}
+
+.window-controls {
+  display: flex;
+  align-items: center;
+  margin-left: 8px;
+}
+
+.win-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 28px;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.win-btn:hover {
+  background: var(--bg-pill-hover);
+  color: var(--text-primary);
+}
+
+.win-btn.close:hover {
+  background: var(--accent-danger);
+  color: var(--accent-on-black, #ffffff);
+}
+
+/* Main Workspace (Sidebar + Canvas) */
+.workspace-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  padding: 6px 8px 8px 8px;
+  background-color: var(--bg-app);
+}
+
+/* Left Sidebar (JetBrains Floating Card) */
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  width: 250px;
+  height: 100%;
+  background-color: var(--bg-sidebar);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+  user-select: none;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.sidebar.collapsed {
+  width: 0 !important;
+  min-width: 0 !important;
+  border: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  opacity: 0;
+  pointer-events: none;
+  display: none !important;
+}
+
+/* ─── Card Panel Resizers (JetBrains Invisible Gutter Splitters) ──────── */
+.panel-resizer-col {
+  width: 8px;
+  height: 100%;
+  flex-shrink: 0;
+  cursor: var(--cursor-col-resize);
+  position: relative;
+  user-select: none;
+  touch-action: none;
+  z-index: 10;
+}
+
+/* Horizontal resizer for docked panels (e.g. terminal dock) */
+.panel-resizer-row {
+  height: 8px;
+  width: 100%;
+  flex-shrink: 0;
+  cursor: var(--cursor-row-resize);
+  position: relative;
+  user-select: none;
+  touch-action: none;
+  z-index: 10;
+}
+
+/* While dragging, enforce the smooth custom cursor and disable text selection */
+body.resizing-col,
+body.resizing-col * {
+  cursor: var(--cursor-col-resize) !important;
+  user-select: none !important;
+}
+
+body.resizing-row,
+body.resizing-row * {
+  cursor: var(--cursor-row-resize) !important;
+  user-select: none !important;
+}
+
+
+
+.sidebar-top-actions {
+  display: flex;
+  flex-direction: column;
+  padding: 12px 10px 6px;
+  gap: 2px;
+}
+
+.action-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  height: 34px;
+  padding: 0 10px;
+  border-radius: var(--radius-md);
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  text-align: left;
+}
+
+.action-row:hover {
+  background: var(--bg-sidebar-hover);
+}
+
+.action-row.active {
+  background: var(--bg-sidebar-active);
+  font-weight: 500;
+}
+
+.action-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.action-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--text-secondary);
+}
+
+.shortcut-badge {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  background: rgba(0, 0, 0, 0.04);
+  padding: 2px 6px;
+  border-radius: var(--radius-xs);
+}
+
+/* Segmented Control */
+.segmented-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+}
+
+.segmented-control {
+  display: flex;
+  align-items: center;
+  background: var(--bg-pill);
+  padding: 2px;
+  border-radius: var(--radius-md);
+}
+
+.segmented-btn {
+  padding: 3px 12px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.segmented-btn.active {
+  background: var(--bg-card);
+  color: var(--text-primary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  font-weight: 500;
+}
+
+.filter-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-xs);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.filter-icon-btn:hover {
+  background: var(--bg-sidebar-hover);
+  color: var(--text-primary);
+}
+
+/* Sidebar List Container */
+.sidebar-list-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 12px;
+}
+
+.list-section-header {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  padding: 10px 4px 4px;
+}
+
+.list-empty-item {
+  font-size: 12px;
+  color: var(--text-placeholder);
+  padding: 6px 4px 10px;
+}
+
+.task-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  margin-bottom: 2px;
+  transition: background 0.15s;
+}
+
+.task-item:hover {
+  background: var(--bg-sidebar-hover);
+  color: var(--text-primary);
+}
+
+.task-item.active {
+  background: var(--bg-sidebar-active);
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.task-item .task-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.task-item .task-rename-input {
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  padding: 0 5px;
+  font-size: 12.5px;
+  color: var(--text-primary);
+  background: var(--bg-card);
+  border: 1px solid var(--border-focus, #18181b);
+  border-radius: var(--radius-xs, 4px);
+  outline: none;
+  font-family: inherit;
+}
+
+.task-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.task-item:hover .task-actions,
+.task-item.active .task-actions {
+  opacity: 1;
+}
+
+.task-action-btn {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: var(--radius-xs, 4px);
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.task-action-btn:hover {
+  background: var(--bg-pill-hover);
+  color: var(--text-primary);
+}
+
+.task-action-btn.delete:hover {
+  color: var(--accent-danger, #ef4444);
+  background: rgba(239, 68, 68, 0.1);
+}
+
+/* Sidebar Footer / Account Profile */
+.sidebar-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-sidebar);
+}
+
+.user-profile-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.user-avatar-circle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #e4e4e7;
+  color: #18181b;
+  font-size: 12px;
+  font-weight: 600;
+  user-select: none;
+}
+
+.user-name-text {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.footer-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.footer-action-btn:hover {
+  background: var(--bg-sidebar-hover);
+  color: var(--text-primary);
+}
+
+/* Stage & Docked Column Layout */
+.main-stage-column {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  height: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* Center Stage Area (JetBrains Floating Card) */
+.stage-container {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 140px;
+  position: relative;
+  overflow: hidden;
+  background-color: var(--bg-sidebar);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+  isolation: isolate;
+  transform: translateZ(0);
+}
