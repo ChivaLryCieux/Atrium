@@ -852,6 +852,7 @@ function runTurn(request, sseWrite) {
         }
       }
 
+      if (state.flushStreamBuffer) state.flushStreamBuffer()
       bindConversation(conversationId, result.sessionId)
       broadcastTelemetry(conversationId, stageId, { kind: 'turn-complete', sessionId: result.sessionId })
 
