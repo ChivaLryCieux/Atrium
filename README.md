@@ -11,7 +11,6 @@ Atrium： **AI Agent Harness（智能体驾驭）** 应用：
 - **驾驭化调度 (Harness & Dispatch)**：每个智能体作为一个标准化算子槽位（Slot），支持专属凭据、模型参数与工程约束；多轮上下文由内核会话（Session）持有。
 - **确定性 DAG 流水线 (Deterministic DAG Pipeline)**：多节点协同流水线（探针 Probe -> 拓展 Synthesis -> 审校 Critique）逐节点推进内核会话，节点输出以流式增量实时渲染。
 - **全向并行群测 (Parallel Concurrency)**：多智能体同态输入并列响应，用于基准对比与多样性探索。
-- **直连兜底 (Direct Fallback)**：发行包始终内嵌 dsh 内核；仅当运行期内核加载失败（极端异常）时自动回退 OpenAI 兼容直连通道，产品保持可用。
 - **Cordis 微内核扩展 (Zero-Pollution Microkernel)**：通过 Cordis Profile (`atrium-desktop`) 与有序 `--patch` 覆写文件实现无侵入热插拔定制，上游 `deepseek-harness` 仓库保持 0 代码污染。
 - **嵌入式 PTY 终端 (Embedded PTY Terminal)**：工作台底部坞接 xterm.js 终端，由 Rust 侧 `portable-pty` 驱动真实 Shell 会话，工作目录跟随当前项目。
 - **工程上下文管理 (Projects & Sessions)**：项目（默认工作目录）、多会话（与内核 Session 绑定）、Soul 人格（`SOUL.md`）三层上下文，全部本地持久化。
@@ -121,7 +120,7 @@ Atrium/
 │   └── atrium-core/                    # @atrium/core：Cordis Profile（profiles/atrium-desktop/）
 ├── src-tauri/                          # 宿主层（Rust + Tauri 2）
 │   ├── src/daemon.rs                   #   内核桥进程托管（Windows Job Object 进程树、死亡自愈重拉）
-│   ├── src/orchestration.rs            #   编排路由（内核优先 + 直连兜底）
+│   ├── src/orchestration.rs            #   编排路由（内核驱动）
 │   ├── src/terminal.rs                 #   PTY 终端管理（portable-pty）
 │   └── resources/                      #   打包暂存资源（bridge/node/kernel/cordis，gitignore）
 ├── scripts/                            # 工程脚本（内核构建 / 暂存 / 上游同步 / i18n 校验）
@@ -164,7 +163,7 @@ pnpm run build
 
 Atrium 只提供一种发行形态：**内嵌 dsh 内核的完整包**。安装包内嵌上游的**单文件 dsh 运行时**（一个 ~250 MB 可执行文件，Node 24 与整个内核闭包已内嵌，外加 ~6 MB ripgrep sidecar），安装后即可运行，对方无需任何环境。
 
-轻量（无内核）形态已移除：`bundle:runtime` 永远强制暂存内核，`.kernel-dist/` 缺少内核产物时暂存直接失败——任何发行包都带内核，不会产出降级包。直连通道仅保留为运行期内核加载失败时的兜底。
+轻量（无内核）形态已移除：`bundle:runtime` 永远强制暂存内核，`.kernel-dist/` 缺少内核产物时暂存直接失败——任何发行包都带内核，不会产出降级包。产品完全由内核驱动，无回退通道。
 
 ### 前置条件
 
@@ -210,7 +209,7 @@ curl http://127.0.0.1:19387/healthz
 ```
 
 - 安装包应返回 `"kernel":"ready"` 且 `"kernelMode":"exe"`（单文件运行时已挂载）。
-- 若返回 `"kernel":"missing"`/`"error"`，说明内核加载失败，AI 请求退化为直连通道，产品仍可用但不再由内核驱动——分发前必须排查。
+- 若返回 `"kernel":"missing"`/`"error"`，说明内核加载失败，由于应用无绕过内核的回退通道，此时 AI 请求将直接报错不可用——分发前必须排查。
 
 打包后的运行时会随安装包分发，与 `atrium.exe` 同级：`bridge/`（自包含内核桥接 + 打包进来的 SDK 客户端）、`node/`（Node 运行时，桥接自身运行所需）、`kernel/`（内核本体：单文件 exe 与 `-rg` sidecar）、`cordis/`（人格覆写补丁）。
 
