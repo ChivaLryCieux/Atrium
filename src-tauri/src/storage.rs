@@ -233,13 +233,33 @@ pub fn save_settings(app: &AppHandle, settings: &AppSettings) -> Result<(), Stri
 
 // ─── Chat History ──────────────────────────────────────────────
 
+fn deduplicate_message_ids(msgs: &mut [ChatMessage]) -> bool {
+    let mut seen_ids = std::collections::HashSet::new();
+    let mut modified = false;
+    for (i, msg) in msgs.iter_mut().enumerate() {
+        if msg.id.is_empty() || seen_ids.contains(&msg.id) {
+            msg.id = format!("{}-{i}", if msg.id.is_empty() { "msg" } else { &msg.id });
+            if seen_ids.contains(&msg.id) {
+                msg.id = Uuid::new_v4().to_string();
+            }
+            modified = true;
+        }
+        seen_ids.insert(msg.id.clone());
+    }
+    modified
+}
+
 pub fn load_history(app: &AppHandle) -> Result<Vec<ChatMessage>, String> {
     let path = history_path(app)?;
     if !path.exists() {
         return Ok(Vec::new());
     }
     let text = fs::read_to_string(&path).map_err(|err| format!("无法读取聊天记录: {err}"))?;
-    serde_json::from_str(&text).map_err(|err| format!("聊天记录格式无效: {err}"))
+    let mut msgs: Vec<ChatMessage> = serde_json::from_str(&text).map_err(|err| format!("聊天记录格式无效: {err}"))?;
+    if deduplicate_message_ids(&mut msgs) {
+        let _ = save_history(app, &msgs);
+    }
+    Ok(msgs)
 }
 
 pub fn save_history(app: &AppHandle, messages: &[ChatMessage]) -> Result<(), String> {
@@ -431,7 +451,11 @@ pub fn load_session_messages(app: &AppHandle, session_id: &str) -> Result<Vec<Ch
         return Ok(Vec::new());
     }
     let text = fs::read_to_string(&path).map_err(|e| format!("读取会话消息失败: {e}"))?;
-    serde_json::from_str(&text).map_err(|e| format!("消息格式无效: {e}"))
+    let mut msgs: Vec<ChatMessage> = serde_json::from_str(&text).map_err(|e| format!("消息格式无效: {e}"))?;
+    if deduplicate_message_ids(&mut msgs) {
+        let _ = save_session_messages(app, session_id, &msgs);
+    }
+    Ok(msgs)
 }
 
 pub fn save_session_messages(app: &AppHandle, session_id: &str, messages: &[ChatMessage]) -> Result<(), String> {

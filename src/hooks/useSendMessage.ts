@@ -46,15 +46,17 @@ export type SendPipelineDeps = {
  * (token high-water-mark, toolCalls, reasoning) → persist.
  */
 export function useSendMessage(deps: SendPipelineDeps) {
-  const handleSend = async (overrideText?: string) => {
-    await sendPipeline(deps, overrideText);
+  const handleSend = async (overrideText?: unknown) => {
+    const text = typeof overrideText === 'string' ? overrideText : undefined;
+    await sendPipeline(deps, text);
   };
   return { handleSend };
 }
 
 async function sendPipeline(d: SendPipelineDeps, overrideText?: string) {
   const { settings, activeProfile, t } = d;
-  const content = (overrideText !== undefined ? overrideText : d.draft).trim();
+  const rawText = typeof overrideText === 'string' ? overrideText : d.draft;
+  const content = (rawText || '').trim();
   if (!content || !activeProfile || !settings || d.isSending) return;
 
   let curSessionId = d.activeSessionId;
@@ -317,8 +319,9 @@ function settleReplies(
   finalReplies: ChatMessage[],
   curSessionId: string | null
 ): ChatMessage[] {
-  const mergedReplies = finalReplies.map((reply) => {
-    const pending = prev.find((m) => m.id === reply.id);
+  const pendingList = prev.filter((m) => m.pending);
+  const mergedReplies = finalReplies.map((reply, idx) => {
+    const pending = prev.find((m) => m.id === reply.id && m.pending) ?? pendingList[idx];
     const toolCalls =
       reply.toolCalls && reply.toolCalls.length > 0 ? reply.toolCalls : pending?.toolCalls ?? null;
     // 结算合并同样走高水位：回复载荷若缺失/小于流式期间已记录的
@@ -327,8 +330,16 @@ function settleReplies(
       inputTokens: reply.promptTokens ?? 0,
       outputTokens: reply.completionTokens ?? 0,
     });
+    const finalId =
+      reply.id && !reply.id.endsWith("-single") && !reply.id.startsWith("stage-")
+        ? reply.id
+        : (typeof crypto !== "undefined" && crypto.randomUUID
+            ? crypto.randomUUID()
+            : `${reply.id || "msg"}-${Date.now()}-${idx}`);
+
     return {
       ...reply,
+      id: finalId,
       toolCalls,
       promptTokens: watermark.promptTokens || null,
       completionTokens: watermark.completionTokens || null,

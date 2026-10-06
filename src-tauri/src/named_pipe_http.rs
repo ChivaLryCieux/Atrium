@@ -237,9 +237,24 @@ pub async fn post_turn_via_pipe(
         return Err(format!("内核执行失败: {err_msg}"));
     }
 
-    if let Some(turn) = final_turn {
+    if let Some(mut turn) = final_turn {
+        if turn.final_response.trim().is_empty() && !accumulated_text.is_empty() {
+            turn.final_response = accumulated_text;
+        }
+        if turn.reasoning_content.is_none() && !accumulated_reasoning.is_empty() {
+            turn.reasoning_content = Some(accumulated_reasoning);
+        }
+        let has_content = !turn.final_response.trim().is_empty();
+        let has_reasoning = turn.reasoning_content.as_deref().map(|s| !s.trim().is_empty()).unwrap_or(false);
+        let has_tools = turn.tool_calls.as_ref().map(|t| !t.is_empty()).unwrap_or(false);
+        if !has_content && !has_reasoning && !has_tools {
+            if let Some(err) = last_error_msg {
+                return Err(err);
+            }
+            return Err("模型未返回有效内容，请检查端点配置、API Key 与网络连通性。".to_string());
+        }
         Ok(turn)
-    } else if !accumulated_text.is_empty() {
+    } else if !accumulated_text.is_empty() || !accumulated_reasoning.is_empty() {
         Ok(crate::models::KernelTurnResponse {
             session_id: "named-pipe-fallback".to_string(),
             final_response: accumulated_text,
@@ -251,6 +266,9 @@ pub async fn post_turn_via_pipe(
             kernel_route: None,
         })
     } else {
+        if let Some(err) = last_error_msg {
+            return Err(err);
+        }
         Err("内核未返回有效结果".to_string())
     }
 }

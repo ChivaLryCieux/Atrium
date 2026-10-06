@@ -11,6 +11,7 @@ import type {
   Soul,
 } from "../types/chat";
 import { dshClient } from "../services/dshClient";
+import { ensureUniqueMessageIds } from "../utils/messages";
 
 export type AppBootstrapSetters = {
   setSettings: Dispatch<SetStateAction<AppSettings | null>>;
@@ -68,7 +69,7 @@ export function useAppBootstrap(setters: AppBootstrapSetters, tRef: MutableRefOb
           setters.setActiveSessionId(first.id);
           invoke<ChatMessage[]>("load_session_messages", { sessionId: first.id })
             .then((loadedMsgs) => {
-              if (loadedMsgs && loadedMsgs.length > 0) setters.setMessages(loadedMsgs);
+              if (loadedMsgs && loadedMsgs.length > 0) setters.setMessages(ensureUniqueMessageIds(loadedMsgs));
             })
             .catch(console.error);
         } else {
@@ -86,9 +87,9 @@ export function useAppBootstrap(setters: AppBootstrapSetters, tRef: MutableRefOb
                   });
                   setters.setSessions([created]);
                   setters.setActiveSessionId(created.id);
-                  setters.setMessages(cached);
+                  setters.setMessages(ensureUniqueMessageIds(cached));
                 } catch {
-                  setters.setMessages(cached);
+                  setters.setMessages(ensureUniqueMessageIds(cached));
                 }
               }
             })

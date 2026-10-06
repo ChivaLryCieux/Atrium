@@ -514,7 +514,22 @@ async fn post_turn(
         }
     }
 
-    if let Some(turn) = final_turn {
+    if let Some(mut turn) = final_turn {
+        if turn.final_response.trim().is_empty() && !accumulated_text.is_empty() {
+            turn.final_response = accumulated_text;
+        }
+        if turn.reasoning_content.is_none() && !accumulated_reasoning.is_empty() {
+            turn.reasoning_content = Some(accumulated_reasoning);
+        }
+        let has_content = !turn.final_response.trim().is_empty();
+        let has_reasoning = turn.reasoning_content.as_deref().map(|s| !s.trim().is_empty()).unwrap_or(false);
+        let has_tools = turn.tool_calls.as_ref().map(|t| !t.is_empty()).unwrap_or(false);
+        if !has_content && !has_reasoning && !has_tools {
+            if let Some(err) = last_error_msg {
+                return Err(err);
+            }
+            return Err("模型未返回有效回复内容，请检查端点配置、API Key 与网络状态。".to_string());
+        }
         return Ok(turn);
     }
 
@@ -567,9 +582,12 @@ fn latest_user_input(messages: &[ChatMessage]) -> String {
 /// `https://gateway.example/anthropic/v1/messages` would reach the kernel
 /// verbatim and be requested again as `…/v1/messages/v1/messages`.
 fn kernel_base_url(endpoint: &str, api_protocol: &str) -> Option<String> {
-    let trimmed = endpoint.trim().trim_end_matches('/');
+    let mut trimmed = endpoint.trim().trim_end_matches('/').to_string();
     if trimmed.is_empty() {
         return None;
+    }
+    if api_protocol.trim() == "openai-chat" && trimmed.contains("/step_plan") && !trimmed.contains("/step_plan/v1") {
+        trimmed = trimmed.replace("/step_plan", "/step_plan/v1");
     }
     // Strip order matters, and so does what is *not* stripped: a suffix is
     // only removed when the remainder is still a usable root for the declared
@@ -584,7 +602,7 @@ fn kernel_base_url(endpoint: &str, api_protocol: &str) -> Option<String> {
     let base = suffixes
         .iter()
         .find_map(|suffix| trimmed.strip_suffix(suffix))
-        .unwrap_or(trimmed)
+        .unwrap_or(&trimmed)
         .trim_end_matches('/')
         .to_string();
     (!base.is_empty()).then_some(base)
@@ -685,7 +703,7 @@ async fn execute_dag_kernel(
                     .map(|n| n as usize)
                     .unwrap_or_else(|| crate::tokens::estimate_tokens(&turn.final_response));
                 let reply = ChatMessage {
-                    id: stage_message_id(stage),
+                    id: Uuid::new_v4().to_string(),
                     role: "assistant".to_string(),
                     content: turn.final_response,
                     speaker_id: Some(stage.profile.id.clone()),
@@ -715,7 +733,7 @@ async fn execute_dag_kernel(
             }
             Err(err) => {
                 let reply = ChatMessage {
-                    id: stage_message_id(stage),
+                    id: Uuid::new_v4().to_string(),
                     role: "assistant".to_string(),
                     content: err.clone(),
                     speaker_id: Some(stage.profile.id.clone()),
@@ -932,15 +950,24 @@ async fn execute_single_kernel(
                 .get_output_tokens()
                 .map(|n| n as usize)
                 .unwrap_or_else(|| crate::tokens::estimate_tokens(&turn.final_response));
+            let has_content = !turn.final_response.trim().is_empty();
+            let has_reasoning = turn.reasoning_content.as_deref().map(|s| !s.trim().is_empty()).unwrap_or(false);
+            let has_tools = turn.tool_calls.as_ref().map(|t| !t.is_empty()).unwrap_or(false);
+            let is_empty = !has_content && !has_reasoning && !has_tools;
+            let display_content = if is_empty {
+                "模型未返回有效回复内容（请检查端点地址、API Key 与网络状态）。".to_string()
+            } else {
+                turn.final_response.clone()
+            };
             let reply = ChatMessage {
-                id: stage_id.clone(),
+                id: Uuid::new_v4().to_string(),
                 role: "assistant".to_string(),
-                content: turn.final_response.clone(),
+                content: display_content,
                 speaker_id: Some(profile.id.clone()),
                 speaker_name: profile.name.clone(),
                 avatar: profile.avatar.clone(),
                 pending: false,
-                error: false,
+                error: is_empty,
                 prompt_tokens: Some(prompt_tokens),
                 completion_tokens: Some(completion_tokens),
                 latency_ms: Some(latency),
@@ -963,7 +990,7 @@ async fn execute_single_kernel(
         }
         Err(err) => {
             let reply = ChatMessage {
-                id: stage_id.clone(),
+                id: Uuid::new_v4().to_string(),
                 role: "assistant".to_string(),
                 content: err.clone(),
                 speaker_id: Some(profile.id.clone()),
@@ -1044,7 +1071,7 @@ async fn execute_parallel_kernel(
     results
         .into_iter()
         .enumerate()
-        .map(|(index, (profile, prompt, start_time, result))| {
+        .map(|(_index, (profile, prompt, start_time, result))| {
             let latency = start_time.elapsed().as_millis() as u64;
             match result {
                 Ok(turn) => {
@@ -1058,11 +1085,7 @@ async fn execute_parallel_kernel(
                         .map(|n| n as usize)
                         .unwrap_or_else(|| crate::tokens::estimate_tokens(&turn.final_response));
                     ChatMessage {
-                        // Must equal the stage id sent to the bridge (and the
-                        // frontend pending id) so streamed deltas/tokens and
-                        // the settled reply land on the same node; a random
-                        // UUID here would orphan the pending bubble at merge.
-                        id: format!("{}-{}", profile.id, index),
+                        id: Uuid::new_v4().to_string(),
                         role: "assistant".to_string(),
                         content: turn.final_response,
                         speaker_id: Some(profile.id.clone()),
@@ -1079,7 +1102,7 @@ async fn execute_parallel_kernel(
                     }
                 }
                 Err(err) => ChatMessage {
-                    id: format!("{}-{}", profile.id, index),
+                    id: Uuid::new_v4().to_string(),
                     role: "assistant".to_string(),
                     content: err,
                     speaker_id: Some(profile.id.clone()),

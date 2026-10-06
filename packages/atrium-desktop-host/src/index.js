@@ -789,13 +789,26 @@ function handleNotification(route, notification, state, sseWrite) {
       })
       broadcastTelemetry(conversationId, stageId, { kind: 'tool-result', turn: event.data?.turn, callId, isError })
     } else if (event?.type === 'turn/end') {
-      _emit({
-        type: 'agent-status',
-        conversationId,
-        stageId,
-        status: 'turn_ended',
-        detail: '轮次执行完毕',
-      })
+      const reason = event.data?.reason
+      if (reason && typeof reason === 'object' && reason.kind === 'error') {
+        const errorMsg = reason.error?.message || reason.message || '模型执行异常中断'
+        state.lastError = errorMsg
+        _emit({
+          type: 'agent-status',
+          conversationId,
+          stageId,
+          status: 'error',
+          detail: `执行失败: ${errorMsg}`,
+        })
+      } else {
+        _emit({
+          type: 'agent-status',
+          conversationId,
+          stageId,
+          status: 'turn_ended',
+          detail: '轮次执行完毕',
+        })
+      }
     } else if (event?.type === 'user/message') {
       broadcastTelemetry(conversationId, stageId, { kind: 'user-message' })
     }
@@ -857,9 +870,19 @@ function runTurn(request, sseWrite) {
       bindConversation(conversationId, result.sessionId)
       broadcastTelemetry(conversationId, stageId, { kind: 'turn-complete', sessionId: result.sessionId })
 
+      const finalResponse = result.finalResponse || state.emittedText || ''
+      const hasContent = Boolean(finalResponse.trim())
+      const hasReasoning = Boolean(state.reasoningText && state.reasoningText.trim())
+      const hasToolCalls = Boolean(Array.isArray(state.toolCalls) && state.toolCalls.length > 0)
+
+      if (!hasContent && !hasReasoning && !hasToolCalls) {
+        const errMessage = state.lastError || '模型未返回有效回复内容（请检查端点配置、API Key 与网络连通性）'
+        throw new Error(errMessage)
+      }
+
       return {
         sessionId: result.sessionId,
-        finalResponse: result.finalResponse ?? state.emittedText ?? '',
+        finalResponse: finalResponse,
         reasoningContent: state.reasoningText || undefined,
         ...(state.usage ? { usage: state.usage } : {}),
         toolCalls: state.toolCalls,
@@ -1078,6 +1101,11 @@ async function shutdown() {
       rmSync(dir, { recursive: true, force: true })
     } catch { /* the OS temp sweeper is the backstop */ }
   }
+  if (pipeServer) {
+    try {
+      pipeServer.close()
+    } catch { /* ignore */ }
+  }
   httpServer.close()
   process.exit(0)
 }
@@ -1087,6 +1115,21 @@ process.on('SIGTERM', shutdown)
 process.on('message', (message) => {
   if (message?.type === 'shutdown') void shutdown()
 })
+
+let pipeServer = null
+if (args.pipe) {
+  try {
+    pipeServer = createServer(httpServer.listeners('request')[0])
+    pipeServer.listen(args.pipe, () => {
+      console.log(`[ATRIUM_BRIDGE] listening on named pipe ${args.pipe}`)
+    })
+    pipeServer.on('error', (err) => {
+      console.warn(`[ATRIUM_BRIDGE] named pipe listen error: ${err?.message ?? err}`)
+    })
+  } catch (err) {
+    console.warn(`[ATRIUM_BRIDGE] could not create named pipe server: ${err?.message ?? err}`)
+  }
+}
 
 const server = httpServer.listen(args.port, args.host, () => {
   console.log(`[ATRIUM_BRIDGE] listening on http://${args.host}:${args.port} (dsh root: ${DSH_ROOT})`)

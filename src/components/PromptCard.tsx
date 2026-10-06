@@ -284,7 +284,7 @@ export function PromptCard({
             type="button"
             className="send-arrow-btn"
             disabled={!draft.trim() || isSending}
-            onClick={onSend}
+            onClick={() => onSend()}
             title={t("prompt.send")}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">

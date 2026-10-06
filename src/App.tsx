@@ -19,6 +19,7 @@ import {
   SessionSummary,
   Soul,
 } from "./types/chat";
+import { ensureUniqueMessageIds } from "./utils/messages";
 import { usePanelLayout } from "./hooks/usePanelLayout";
 import { buildCommandActions, useAvailableCommands } from "./hooks/useCommandActions";
 import { useAppBootstrap } from "./hooks/useAppBootstrap";
@@ -241,7 +242,7 @@ export function App() {
     try {
       const msgs = await invoke<ChatMessage[]>("load_session_messages", { sessionId });
       setActiveSessionId(sessionId);
-      setMessages(msgs || []);
+      setMessages(ensureUniqueMessageIds(msgs || []));
     } catch (err) {
       console.error(t("app.loadSessionFailed"), err);
     }
@@ -627,7 +628,7 @@ export function App() {
                 <CenterHome
                   draft={draft}
                   setDraft={setDraft}
-                  onSend={handleSend}
+                  onSend={() => void handleSend()}
                   isSending={isSending}
                   activeProject={activeProject}
                   fallbackProjectName={workspaceName}
@@ -671,7 +672,7 @@ export function App() {
                       placeholder={t("home.followUpPlaceholder")}
                       draft={draft}
                       setDraft={setDraft}
-                      onSend={handleSend}
+                      onSend={() => void handleSend()}
                       isSending={isSending}
                       souls={souls}
                       activeSoul={activeSoulFolder}

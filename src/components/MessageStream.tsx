@@ -67,7 +67,7 @@ export function MessageStream({
     count: messages.length,
     getScrollElement: () => parentRef.current,
     estimateSize: (index) => estimateHeight(messages[index]),
-    getItemKey: (index) => messages[index].id,
+    getItemKey: (index) => `${messages[index]?.id || "msg"}-${index}`,
     overscan: OVERSCAN,
     scrollMargin: SCROLL_PADDING_TOP_PX,
   });
@@ -106,6 +106,7 @@ export function MessageStream({
       >
         {rows.map((virtualRow) => {
           const msg = messages[virtualRow.index];
+          if (!msg) return null;
           return (
             <div
               key={virtualRow.key}

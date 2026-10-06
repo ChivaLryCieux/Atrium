@@ -87,6 +87,9 @@ export function deriveEndpoint(baseUrl: string, protocol: ApiProtocol): string {
     API_PROTOCOLS.find((p) => p.id === protocol)?.endpointSuffix ??
     API_PROTOCOLS.find((p) => p.id === DEFAULT_API_PROTOCOL)!.endpointSuffix;
   let base = stripKnownSuffix(baseUrl);
+  if (protocol === "openai-chat" && base.includes("/step_plan") && !base.includes("/step_plan/v1")) {
+    base = base.replace("/step_plan", "/step_plan/v1");
+  }
   if (suffix.startsWith("/v1/") && base.endsWith("/v1")) {
     base = base.slice(0, base.length - 3).replace(/\/+$/, "");
   }
