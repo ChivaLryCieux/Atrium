@@ -115,7 +115,7 @@ console.log(`\x1b[36m========================================================\x1
 
 if (!existsSync(resolve(ROOT_DIR, "dist/index.html"))) {
   info("dist/ missing — building frontend via `pnpm build`...");
-  execFileSync("pnpm", ["run", "build"], { cwd: ROOT_DIR, stdio: "inherit" });
+  execFileSync("pnpm", ["run", "build"], { cwd: ROOT_DIR, stdio: "inherit", shell: true });
 }
 ok("frontend dist/ present");
 
