@@ -322,8 +322,15 @@ function settleReplies(
   const pendingList = prev.filter((m) => m.pending);
   const mergedReplies = finalReplies.map((reply, idx) => {
     const pending = prev.find((m) => m.id === reply.id && m.pending) ?? pendingList[idx];
-    const toolCalls =
+    const rawToolCalls =
       reply.toolCalls && reply.toolCalls.length > 0 ? reply.toolCalls : pending?.toolCalls ?? null;
+    const toolCalls = rawToolCalls
+      ? rawToolCalls.map((tc) =>
+          tc.status === "running"
+            ? { ...tc, status: reply.error ? ("error" as const) : ("completed" as const), result: tc.result || "执行完成" }
+            : tc
+        )
+      : null;
     // 结算合并同样走高水位：回复载荷若缺失/小于流式期间已记录的
     // 内核精确值，保留较大者，避免「落定瞬间数字回落」。
     const watermark = mergeTokenHighWaterMark(pending ?? {}, {

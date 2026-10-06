@@ -592,10 +592,15 @@ function textOfContentBlocks(message) {
     .join('')
 }
 
-function textOfToolResult(message) {
+function textOfToolResult(dataOrMessage) {
+  if (!dataOrMessage) return ''
+  if (typeof dataOrMessage === 'string') return dataOrMessage
+  if (typeof dataOrMessage.result === 'string') return dataOrMessage.result
+  if (typeof dataOrMessage.output === 'string') return dataOrMessage.output
+  const message = dataOrMessage.message || dataOrMessage
   if (!message || !Array.isArray(message.content)) return ''
   const block = message.content[0]
-  if (block?.type === 'tool-result') {
+  if (block?.type === 'tool-result' || block?.type === 'tool_result') {
     if (typeof block.content === 'string') return block.content
     if (Array.isArray(block.content)) {
       return block.content
@@ -744,18 +749,23 @@ function handleNotification(route, notification, state, sseWrite) {
       broadcastTelemetry(conversationId, stageId, { kind: 'tool-call', tool: name, callId })
     } else if (event?.type === 'tool/result') {
       const callId = String(
+        event.data?.callId ||
         event.data?.message?.source?.callId ||
         event.data?.message?.content?.[0]?.toolCallId ||
         ''
       )
-      const output = textOfToolResult(event.data?.message)
-      const isError = Boolean(event.data?.message?.content?.[0]?.isError || event.data?.error)
+      const output = textOfToolResult(event.data) || textOfToolResult(event.data?.message)
+      const isError = Boolean(event.data?.message?.content?.[0]?.isError || event.data?.error || event.data?.isError)
       const errorDetail = event.data?.error ? `${event.data.error.name}: ${event.data.error.reason || event.data.error.code}` : undefined
       const status = isError ? 'error' : 'completed'
 
+      let resolvedCallId = callId
       if (Array.isArray(state.toolCalls)) {
-        const existing = state.toolCalls.find((c) => c.id === callId)
+        const existing = callId
+          ? state.toolCalls.find((c) => c.id === callId)
+          : [...state.toolCalls].reverse().find((c) => c.status === 'running')
         if (existing) {
+          resolvedCallId = existing.id
           existing.result = output
           existing.isError = isError
           existing.error = errorDetail
@@ -768,7 +778,7 @@ function handleNotification(route, notification, state, sseWrite) {
         stageId,
         event: {
           kind: 'result',
-          callId,
+          callId: resolvedCallId,
           turn: event.data?.turn,
           step: event.data?.step,
           result: output,
@@ -782,12 +792,12 @@ function handleNotification(route, notification, state, sseWrite) {
         conversationId,
         stageId,
         status: 'tool_finished',
-        tool: callId,
+        tool: resolvedCallId,
         detail: '工具执行完成，正在分析并继续推进...',
-        callId,
+        callId: resolvedCallId,
         isError,
       })
-      broadcastTelemetry(conversationId, stageId, { kind: 'tool-result', turn: event.data?.turn, callId, isError })
+      broadcastTelemetry(conversationId, stageId, { kind: 'tool-result', turn: event.data?.turn, callId: resolvedCallId, isError })
     } else if (event?.type === 'turn/end') {
       const reason = event.data?.reason
       if (reason && typeof reason === 'object' && reason.kind === 'error') {
@@ -808,6 +818,30 @@ function handleNotification(route, notification, state, sseWrite) {
           status: 'turn_ended',
           detail: '轮次执行完毕',
         })
+      }
+      // Ensure all tool calls that were marked running are closed on turn/end
+      if (Array.isArray(state.toolCalls)) {
+        for (const tc of state.toolCalls) {
+          if (tc.status === 'running') {
+            tc.status = state.lastError ? 'error' : 'completed'
+            tc.isError = Boolean(state.lastError)
+            tc.error = tc.error || state.lastError
+            tc.result = tc.result || (state.lastError ? '轮次中断未完成' : '执行完成')
+            _emit({
+              type: 'tool-event',
+              conversationId,
+              stageId,
+              event: {
+                kind: 'result',
+                callId: tc.id,
+                result: tc.result,
+                isError: tc.isError,
+                error: tc.error,
+                status: tc.status,
+              },
+            })
+          }
+        }
       }
     } else if (event?.type === 'user/message') {
       broadcastTelemetry(conversationId, stageId, { kind: 'user-message' })
@@ -869,6 +903,27 @@ function runTurn(request, sseWrite) {
       if (state.flushStreamBuffer) state.flushStreamBuffer()
       bindConversation(conversationId, result.sessionId)
       broadcastTelemetry(conversationId, stageId, { kind: 'turn-complete', sessionId: result.sessionId })
+
+      if (Array.isArray(state.toolCalls)) {
+        for (const tc of state.toolCalls) {
+          if (tc.status === 'running') {
+            tc.status = 'completed'
+            tc.result = tc.result || '执行完成'
+            broadcast({
+              type: 'tool-event',
+              conversationId,
+              stageId,
+              event: {
+                kind: 'result',
+                callId: tc.id,
+                result: tc.result,
+                isError: false,
+                status: 'completed',
+              },
+            })
+          }
+        }
+      }
 
       const finalResponse = result.finalResponse || state.emittedText || ''
       const hasContent = Boolean(finalResponse.trim())

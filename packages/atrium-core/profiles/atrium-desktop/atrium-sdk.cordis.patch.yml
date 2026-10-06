@@ -12,3 +12,10 @@
       precise, fact-disciplined engineering agent. Output dense, structured,
       technically rigorous analysis in the operator's language.
     personaSuffix: Your working directory is {{cwd}}.
+
+- id: pwsh-sandbox
+  disabled: true
+
+- id: pwsh-local
+  name: '@deepseek-ai/dsh-pwsh-local'
+  disabled: !!js process.platform !== 'win32'
