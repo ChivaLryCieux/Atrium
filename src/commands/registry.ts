@@ -58,6 +58,12 @@ export const COMMANDS: CommandDefinition[] = [
     keywords: ["soul", "persona", "renge"],
   },
   {
+    id: "open-plugins",
+    titleKey: "command.openPlugins",
+    group: "app",
+    keywords: ["plugin", "chajian", "bundle", "dsh", "extensions"],
+  },
+  {
     id: "open-about",
     titleKey: "command.openAbout",
     group: "app",

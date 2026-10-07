@@ -8,7 +8,8 @@
     "atrium-desktop-host": "src/index.js"
   },
   "dependencies": {
-    "ws": "^8.21.3"
+    "ws": "^8.21.3",
+    "yaml": "^2.9.1"
   },
   "license": "MIT"
 }

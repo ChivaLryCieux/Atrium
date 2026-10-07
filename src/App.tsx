@@ -53,6 +53,7 @@ export function App() {
   const [projectDialog, setProjectDialog] = useState<{ mode: "create" | "edit"; projectId?: string } | null>(null);
   const [souls, setSouls] = useState<Soul[]>([]);
   const [isSoulDialogOpen, setIsSoulDialogOpen] = useState<boolean>(false);
+  const [isPluginDialogOpen, setIsPluginDialogOpen] = useState<boolean>(false);
 
   // ── Session State (extracted hook) ──
   const {
@@ -319,6 +320,7 @@ export function App() {
         onNewTerminal: onNewTerminalClick,
         onOpenSettings: () => setCurrentView("settings"),
         onOpenSouls: () => setIsSoulDialogOpen(true),
+        onOpenPlugins: () => setIsPluginDialogOpen(true),
         onOpenAbout: () => setIsAboutOpen(true),
         onToggleSidebar: () => setIsSidebarCollapsed((prev) => !prev),
         onToggleGitPanel: (projectId) =>
@@ -398,6 +400,7 @@ export function App() {
             width={sidebarWidth}
             onOpenSettings={() => setCurrentView("settings")}
             onOpenSouls={() => setIsSoulDialogOpen(true)}
+            onOpenPlugins={() => setIsPluginDialogOpen(true)}
             projects={projects}
             tasks={sidebarTasks}
             activeTaskId={activeSessionId || undefined}
@@ -621,6 +624,8 @@ export function App() {
         onProjectDeleted={handleProjectDeleted}
         isSoulDialogOpen={isSoulDialogOpen}
         setIsSoulDialogOpen={setIsSoulDialogOpen}
+        isPluginDialogOpen={isPluginDialogOpen}
+        setIsPluginDialogOpen={setIsPluginDialogOpen}
         souls={souls}
         activeSoulFolder={activeSoulFolder}
         onActivateSoul={handleActivateSoul}

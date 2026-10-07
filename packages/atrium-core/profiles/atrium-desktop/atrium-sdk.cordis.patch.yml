@@ -19,3 +19,6 @@
 - id: pwsh-local
   name: '@deepseek-ai/dsh-pwsh-local'
   disabled: !!js process.platform !== 'win32'
+
+- id: tool-plugin-manager
+  disabled: false

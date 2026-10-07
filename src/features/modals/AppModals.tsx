@@ -7,6 +7,9 @@ const ProjectDialog = lazy(() => import("../../components/ProjectDialog").then((
 const SoulManagerDialog = lazy(() =>
   import("../../components/SoulManagerDialog").then((m) => ({ default: m.SoulManagerDialog })),
 );
+const PluginManagerDialog = lazy(() =>
+  import("../../components/PluginManagerDialog").then((m) => ({ default: m.PluginManagerDialog })),
+);
 const AboutDialog = lazy(() => import("../../components/AboutDialog").then((m) => ({ default: m.AboutDialog })));
 const CommandPalette = lazy(() => import("../../components/CommandPalette").then((m) => ({ default: m.CommandPalette })));
 
@@ -20,6 +23,8 @@ export interface AppModalsProps {
 
   isSoulDialogOpen: boolean;
   setIsSoulDialogOpen: (v: boolean) => void;
+  isPluginDialogOpen: boolean;
+  setIsPluginDialogOpen: (v: boolean) => void;
   souls: Soul[];
   activeSoulFolder: string;
   onActivateSoul: (name: string) => void;
@@ -49,6 +54,8 @@ export const AppModals: React.FC<AppModalsProps> = ({
   onProjectDeleted,
   isSoulDialogOpen,
   setIsSoulDialogOpen,
+  isPluginDialogOpen,
+  setIsPluginDialogOpen,
   souls,
   activeSoulFolder,
   onActivateSoul,
@@ -99,6 +106,13 @@ export const AppModals: React.FC<AppModalsProps> = ({
             onDeleted={onSoulDeleted}
             onClose={() => setIsSoulDialogOpen(false)}
           />
+        </Suspense>
+      )}
+
+      {/* DSH Plugins (Plugin & Bundle) Manager */}
+      {isPluginDialogOpen && (
+        <Suspense fallback={null}>
+          <PluginManagerDialog onClose={() => setIsPluginDialogOpen(false)} />
         </Suspense>
       )}
 

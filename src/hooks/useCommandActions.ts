@@ -11,6 +11,7 @@ export type CommandActionsDeps = {
   onNewTerminal: () => void;
   onOpenSettings: () => void;
   onOpenSouls: () => void;
+  onOpenPlugins?: () => void;
   onOpenAbout: () => void;
   onToggleSidebar: () => void;
   onToggleGitPanel: (projectId: string) => void;
@@ -35,6 +36,7 @@ export function buildCommandActions(deps: CommandActionsDeps): Record<string, ()
     "new-terminal": () => deps.onNewTerminal(),
     "open-settings": () => deps.onOpenSettings(),
     "open-souls": () => deps.onOpenSouls(),
+    "open-plugins": () => deps.onOpenPlugins?.(),
     "open-about": () => deps.onOpenAbout(),
     "toggle-sidebar": () => deps.onToggleSidebar(),
     "toggle-theme": cycleTheme,

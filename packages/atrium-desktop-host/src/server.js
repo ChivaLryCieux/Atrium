@@ -18,6 +18,14 @@ import {
   closeAllHarnesses,
 } from './harness_pool.js'
 import { runTurn, abortTurn } from './turns.js'
+import {
+  getPluginCatalog,
+  toggleBundle,
+  togglePatchPlugin,
+  installPlugin,
+  removePlugin,
+  inspectPlugin,
+} from './plugins.js'
 
 export function sendJson(res, status, body) {
   const text = JSON.stringify(body)
@@ -177,6 +185,95 @@ export function startBridgeServer() {
         if (conversationId) conversations.delete(String(conversationId))
         else conversations.clear()
         sendJson(res, 200, { ok: true })
+        return
+      }
+
+      if (req.method === 'GET' && url === '/api/plugins') {
+        const urlObj = new URL(req.url, `http://${req.headers.host || '127.0.0.1'}`)
+        const profile = urlObj.searchParams.get('profile') || 'sdk'
+        const data = getPluginCatalog(profile)
+        sendJson(res, 200, { ok: true, data })
+        return
+      }
+
+      if (req.method === 'POST' && url === '/api/plugins/bundle/toggle') {
+        const body = await readBody(req)
+        const profile = body.profile || 'sdk'
+        const result = await toggleBundle({
+          profile,
+          name: body.name,
+          enabled: Boolean(body.enabled),
+        })
+        sendJson(res, 200, result)
+        return
+      }
+
+      if (req.method === 'POST' && url === '/api/plugins/plugin/toggle') {
+        const body = await readBody(req)
+        const profile = body.profile || 'sdk'
+        const result = await togglePatchPlugin({
+          profile,
+          id: body.id,
+          name: body.name,
+          enabled: Boolean(body.enabled),
+        })
+        sendJson(res, 200, result)
+        return
+      }
+
+      if (req.method === 'POST' && url === '/api/plugins/install') {
+        const body = await readBody(req)
+        const profile = body.profile || 'sdk'
+        const spec = String(body.spec || '').trim()
+        if (!spec) {
+          sendJson(res, 400, { ok: false, error: 'Package spec is required' })
+          return
+        }
+        try {
+          const result = await installPlugin({
+            profile,
+            spec,
+            registry: body.registry,
+          })
+          sendJson(res, 200, result)
+        } catch (err) {
+          sendJson(res, 500, { ok: false, error: err.message || String(err) })
+        }
+        return
+      }
+
+      if (req.method === 'POST' && url === '/api/plugins/remove') {
+        const body = await readBody(req)
+        const profile = body.profile || 'sdk'
+        const name = String(body.name || '').trim()
+        if (!name) {
+          sendJson(res, 400, { ok: false, error: 'Bundle/package name is required' })
+          return
+        }
+        try {
+          const result = await removePlugin({
+            profile,
+            name,
+          })
+          sendJson(res, 200, result)
+        } catch (err) {
+          sendJson(res, 500, { ok: false, error: err.message || String(err) })
+        }
+        return
+      }
+
+      if (req.method === 'POST' && url === '/api/plugins/inspect') {
+        const body = await readBody(req)
+        const spec = String(body.spec || '').trim()
+        if (!spec) {
+          sendJson(res, 400, { ok: false, error: 'Package spec is required' })
+          return
+        }
+        const result = await inspectPlugin({
+          spec,
+          registry: body.registry,
+        })
+        sendJson(res, 200, result)
         return
       }
 
