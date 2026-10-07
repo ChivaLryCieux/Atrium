@@ -566,6 +566,34 @@
   transform: none;
 }
 
+.send-arrow-btn.stop {
+  background: #ef4444;
+  color: #ffffff;
+  cursor: pointer;
+}
+
+.send-arrow-btn.stop:hover {
+  background: #dc2626;
+  transform: scale(1.05);
+}
+
+.send-arrow-btn.stop:active {
+  transform: scale(0.95);
+}
+
+.paused-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: 4px;
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
 /* Quick Suggestion Chips */
 .suggestion-chips-row {
   display: flex;

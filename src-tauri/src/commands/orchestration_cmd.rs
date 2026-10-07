@@ -1,5 +1,5 @@
-use tauri::{AppHandle, State};
-use crate::models::{AiProfile, ChatMessage, OrchestrationRequest};
+use tauri::{AppHandle, State, Emitter};
+use crate::models::{AiProfile, ChatMessage, OrchestrationProgress, OrchestrationRequest};
 use crate::orchestration;
 use crate::storage;
 
@@ -9,6 +9,10 @@ pub async fn execute_orchestration(
     state: State<'_, crate::AppState>,
     request: OrchestrationRequest,
 ) -> Result<Vec<ChatMessage>, String> {
+    if let Some(cid) = &request.conversation_id {
+        orchestration::register_cancellation(cid).await;
+    }
+
     let project = request
         .conversation_id
         .as_ref()
@@ -22,7 +26,7 @@ pub async fn execute_orchestration(
 
     let soul = storage::load_active_soul_content(&app);
 
-    let replies = orchestration::execute(
+    let res = orchestration::execute(
         &app,
         &state.http,
         &state.kernel_http,
@@ -36,7 +40,13 @@ pub async fn execute_orchestration(
         project.as_ref().map(|p| (p.id.as_str(), p.name.as_str(), p.default_directory.as_deref())),
         soul.as_deref(),
     )
-    .await?;
+    .await;
+
+    if let Some(cid) = &request.conversation_id {
+        orchestration::unregister_cancellation(cid).await;
+    }
+
+    let replies = res?;
 
     if let Some(session_id) = &request.conversation_id {
         let mut persisted = request.messages.clone();
@@ -53,6 +63,48 @@ pub async fn execute_orchestration(
     }
 
     Ok(replies)
+}
+
+#[tauri::command]
+pub async fn abort_orchestration(
+    app: AppHandle,
+    state: State<'_, crate::AppState>,
+    conversation_id: String,
+) -> Result<bool, String> {
+    // 1. Mark cancellation flag in Rust
+    orchestration::cancel_conversation(&conversation_id).await;
+
+    // 2. Notify kernel bridge / daemon over HTTP
+    let daemon_url = "http://127.0.0.1:19387";
+    let abort_url = format!("{daemon_url}/v1/abort");
+    let payload = serde_json::json!({
+        "conversationId": conversation_id,
+    });
+
+    let mut req_builder = state.http.post(&abort_url).json(&payload);
+    {
+        let daemon = state.daemon.lock().await;
+        if let Some(token) = &daemon.connection.token {
+            req_builder = req_builder.bearer_auth(token);
+        }
+    }
+
+    let _ = req_builder.send().await;
+
+    // 3. Emit progress event to UI
+    let _ = app.emit(
+        "orchestration-progress",
+        OrchestrationProgress {
+            stage_id: format!("{conversation_id}-abort"),
+            stage_title: "暂停".to_string(),
+            profile_name: String::new(),
+            status: "paused".to_string(),
+            content: Some("操作员已暂停任务".to_string()),
+            message_id: None,
+        },
+    );
+
+    Ok(true)
 }
 
 #[tauri::command]

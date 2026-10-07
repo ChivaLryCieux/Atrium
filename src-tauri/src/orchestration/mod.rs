@@ -14,6 +14,7 @@ use crate::daemon::DshDaemon;
 use crate::models::{AiProfile, ChatMessage};
 
 pub use stages::build_stages;
+pub use common::{cancel_conversation, register_cancellation, unregister_cancellation};
 
 use common::kernel_unavailable_message;
 use dag::execute_dag_kernel;

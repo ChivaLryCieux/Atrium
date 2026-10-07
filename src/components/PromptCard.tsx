@@ -179,6 +179,7 @@ type PromptCardProps = {
   draft: string;
   setDraft: (v: string) => void;
   onSend: () => void;
+  onPause?: () => void;
   isSending: boolean;
   souls: Soul[];
   activeSoul: string | null;
@@ -198,6 +199,7 @@ export function PromptCard({
   draft,
   setDraft,
   onSend,
+  onPause,
   isSending,
   souls,
   activeSoul,
@@ -280,18 +282,32 @@ export function PromptCard({
         </div>
 
         <div className="footer-right-controls">
-          <button
-            type="button"
-            className="send-arrow-btn"
-            disabled={!draft.trim() || isSending}
-            onClick={() => onSend()}
-            title={t("prompt.send")}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <line x1="12" y1="19" x2="12" y2="5" strokeLinecap="round" />
-              <polyline points="5 12 12 5 19 12" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
+          {isSending ? (
+            <button
+              type="button"
+              className="send-arrow-btn stop"
+              onClick={() => onPause?.()}
+              title={t("prompt.pause")}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                <rect x="6" y="5" width="4" height="14" rx="1.5" />
+                <rect x="14" y="5" width="4" height="14" rx="1.5" />
+              </svg>
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="send-arrow-btn"
+              disabled={!draft.trim()}
+              onClick={() => onSend()}
+              title={t("prompt.send")}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <line x1="12" y1="19" x2="12" y2="5" strokeLinecap="round" />
+                <polyline points="5 12 12 5 19 12" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+          )}
         </div>
       </div>
     </div>

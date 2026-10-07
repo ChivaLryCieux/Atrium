@@ -17,7 +17,7 @@ import {
   conversations,
   closeAllHarnesses,
 } from './harness_pool.js'
-import { runTurn } from './turns.js'
+import { runTurn, abortTurn } from './turns.js'
 
 export function sendJson(res, status, body) {
   const text = JSON.stringify(body)
@@ -157,6 +157,14 @@ export function startBridgeServer() {
         try {
           res.end()
         } catch { /* already closed */ }
+        return
+      }
+
+      if (req.method === 'POST' && (url === '/v1/abort' || url === '/v1/turn/abort')) {
+        const body = await readBody(req)
+        const conversationId = String(body.conversationId ?? '')
+        const aborted = abortTurn(conversationId)
+        sendJson(res, 200, { ok: true, conversationId, aborted })
         return
       }
 

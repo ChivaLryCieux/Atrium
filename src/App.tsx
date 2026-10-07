@@ -257,7 +257,7 @@ export function App() {
   };
 
   // ── Send pipeline ────────────────────────────────────────────
-  const { handleSend } = useSendMessage({
+  const { handleSend, handlePause } = useSendMessage({
     settings,
     activeProfile,
     selectedModel,
@@ -521,6 +521,7 @@ export function App() {
                   draft={draft}
                   setDraft={setDraft}
                   onSend={() => void handleSend()}
+                  onPause={() => void handlePause()}
                   isSending={isSending}
                   activeProject={activeProject}
                   fallbackProjectName={workspaceName}
@@ -565,6 +566,7 @@ export function App() {
                       draft={draft}
                       setDraft={setDraft}
                       onSend={() => void handleSend()}
+                      onPause={() => void handlePause()}
                       isSending={isSending}
                       souls={souls}
                       activeSoul={activeSoulFolder}

@@ -46,6 +46,7 @@ pub fn run() {
             commands::create_profile,
             commands::delete_profile,
             commands::execute_orchestration,
+            commands::abort_orchestration,
             commands::build_orchestration,
             commands::start_harness_daemon,
             commands::stop_harness_daemon,

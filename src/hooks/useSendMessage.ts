@@ -50,7 +50,10 @@ export function useSendMessage(deps: SendPipelineDeps) {
     const text = typeof overrideText === 'string' ? overrideText : undefined;
     await sendPipeline(deps, text);
   };
-  return { handleSend };
+  const handlePause = async () => {
+    await pausePipeline(deps);
+  };
+  return { handleSend, handlePause };
 }
 
 async function sendPipeline(d: SendPipelineDeps, overrideText?: string) {
@@ -129,6 +132,10 @@ async function sendPipeline(d: SendPipelineDeps, overrideText?: string) {
     }
     d.setMessages((prev) => settleReplies(d, prev, baseMessages, finalReplies, curSessionId));
   } catch (error) {
+    if (!d.isSendingRef.current) {
+      // Intentionally aborted / paused by operator, do not treat as dispatch failure
+      return;
+    }
     d.setMessages((prev) =>
       prev.map((msg) =>
         msg.pending
@@ -151,6 +158,40 @@ async function sendPipeline(d: SendPipelineDeps, overrideText?: string) {
     d.isSendingRef.current = false;
     d.setIsSending(false);
   }
+}
+
+async function pausePipeline(d: SendPipelineDeps) {
+  if (!d.isSendingRef.current) return;
+  d.isSendingRef.current = false;
+  d.setIsSending(false);
+
+  const curSessionId = d.activeSessionIdRef.current || d.activeSessionId;
+  if (curSessionId) {
+    try {
+      await invoke("abort_orchestration", { conversationId: curSessionId });
+    } catch (err) {
+      console.warn("Failed to abort orchestration:", err);
+    }
+  }
+
+  d.setMessages((prev) =>
+    prev.map((msg) => {
+      if (!msg.pending) return msg;
+      const isPlaceholder =
+        msg.content === d.tRef.current("app.thinking") ||
+        msg.content.includes(d.tRef.current("app.stageAnalyzing")) ||
+        (msg.content.startsWith("[") && msg.content.includes("]"));
+      const pausedTag = `\n\n*(${d.tRef.current("app.pausedByUser")})*`;
+      return {
+        ...msg,
+        pending: false,
+        paused: true,
+        content: isPlaceholder
+          ? d.tRef.current("app.pausedByUser")
+          : (msg.content.endsWith(pausedTag) ? msg.content : `${msg.content}${pausedTag}`),
+      };
+    })
+  );
 }
 
 async function ensureSession(d: SendPipelineDeps): Promise<string | null> {
@@ -351,6 +392,7 @@ function settleReplies(
       promptTokens: watermark.promptTokens || null,
       completionTokens: watermark.completionTokens || null,
       reasoningContent: reply.reasoningContent || pending?.reasoningContent || null,
+      paused: reply.paused || pending?.paused || false,
     };
   });
   // Persistence + index refresh happen server-side inside

@@ -260,6 +260,25 @@ export function handleNotification(route, notification, state, sseWrite) {
   }
 }
 
+export const activeTurns = new Map()
+
+export function abortTurn(conversationId) {
+  const targetId = String(conversationId ?? 'default')
+  const active = activeTurns.get(targetId)
+  if (active) {
+    active.abort()
+    activeTurns.delete(targetId)
+    return true
+  }
+  broadcast({
+    type: 'agent-status',
+    conversationId: targetId,
+    status: 'paused',
+    detail: '操作员已暂停任务',
+  })
+  return false
+}
+
 export function runTurn(request, sseWrite) {
   const conversationId = String(request.conversationId ?? 'default')
   const stageId = request.stageId ?? null
@@ -277,20 +296,56 @@ export function runTurn(request, sseWrite) {
   const execution = record.chain.then(async () => {
     const entry = await ensureHarness(request)
     entry.activeTurns += 1
+    const rKey = routeKey(request)
+    const turnRoute = { conversationId, stageId }
+    const state = { usage: null, toolCalls: [], reasoningText: '', emittedText: '', aborted: false }
+
+    const handle = {
+      entry,
+      state,
+      abort: () => {
+        state.aborted = true
+        broadcast({
+          type: 'agent-status',
+          conversationId,
+          stageId,
+          status: 'paused',
+          detail: '操作员已暂停任务',
+        })
+        broadcastTelemetry(conversationId, stageId, { kind: 'turn-aborted' })
+        try {
+          const child = entry.harness?.clientInstance?.child
+          if (child && child.exitCode === null && child.signalCode === null) {
+            child.kill('SIGTERM')
+          }
+        } catch (e) {
+          console.warn('[ATRIUM_BRIDGE] Failed to kill child on abort:', e)
+        }
+        harnessPool.delete(rKey)
+      },
+    }
+    activeTurns.set(conversationId, handle)
+
     try {
-      const route = { conversationId, stageId }
-      const state = { usage: null, toolCalls: [], reasoningText: '', emittedText: '' }
       broadcastTelemetry(conversationId, stageId, { kind: 'turn-start', model: request.model })
 
       let result
       try {
         result = await entry.harness.run(prompt, {
           ...(record.dshSessionId ? { sessionId: record.dshSessionId } : {}),
-          onNotification: (notification) => handleNotification(route, notification, state, sseWrite),
+          onNotification: (notification) => handleNotification(turnRoute, notification, state, sseWrite),
         })
       } catch (runError) {
-        if (state.emittedText && state.emittedText.trim().length > 0) {
-          console.warn(`[ATRIUM_BRIDGE] Turn execution failed with error: ${runError?.message ?? runError}. Recovering emitted text (${state.emittedText.length} chars).`);
+        if (state.aborted) {
+          result = {
+            sessionId: record.dshSessionId ?? 'aborted-session',
+            finalResponse: state.emittedText
+              ? `${state.emittedText}\n\n*(操作员已暂停)*`
+              : '*(操作员已暂停)*',
+            aborted: true,
+          }
+        } else if (state.emittedText && state.emittedText.trim().length > 0) {
+          console.warn(`[ATRIUM_BRIDGE] Turn execution failed with error: ${runError?.message ?? runError}. Recovering emitted text (${state.emittedText.length} chars).`)
           result = {
             sessionId: record.dshSessionId ?? 'recovered-session',
             finalResponse: state.emittedText,
@@ -307,8 +362,8 @@ export function runTurn(request, sseWrite) {
       if (Array.isArray(state.toolCalls)) {
         for (const tc of state.toolCalls) {
           if (tc.status === 'running') {
-            tc.status = 'completed'
-            tc.result = tc.result || '执行完成'
+            tc.status = state.aborted ? 'error' : 'completed'
+            tc.result = tc.result || (state.aborted ? '操作员已暂停任务' : '执行完成')
             broadcast({
               type: 'tool-event',
               conversationId,
@@ -317,20 +372,20 @@ export function runTurn(request, sseWrite) {
                 kind: 'result',
                 callId: tc.id,
                 result: tc.result,
-                isError: false,
-                status: 'completed',
+                isError: state.aborted,
+                status: tc.status,
               },
             })
           }
         }
       }
 
-      const finalResponse = result.finalResponse || state.emittedText || ''
+      const finalResponse = result.finalResponse || state.emittedText || (state.aborted ? '*(操作员已暂停)*' : '')
       const hasContent = Boolean(finalResponse.trim())
       const hasReasoning = Boolean(state.reasoningText && state.reasoningText.trim())
       const hasToolCalls = Boolean(Array.isArray(state.toolCalls) && state.toolCalls.length > 0)
 
-      if (!hasContent && !hasReasoning && !hasToolCalls) {
+      if (!hasContent && !hasReasoning && !hasToolCalls && !state.aborted) {
         const errMessage = state.lastError || '模型未返回有效回复内容（请检查端点配置、API Key 与网络连通性）'
         throw new Error(errMessage)
       }
@@ -342,8 +397,10 @@ export function runTurn(request, sseWrite) {
         ...(state.usage ? { usage: state.usage } : {}),
         toolCalls: state.toolCalls,
         kernelRoute: routeKey(request),
+        aborted: state.aborted,
       }
     } finally {
+      activeTurns.delete(conversationId)
       entry.activeTurns -= 1
     }
   })

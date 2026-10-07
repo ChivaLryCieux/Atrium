@@ -71,6 +71,49 @@ pub fn kernel_unavailable_message(profiles: &[AiProfile], kernel_detail: Option<
     }
 }
 
+
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, OnceLock};
+use tokio::sync::Mutex;
+
+static CANCELLATIONS: OnceLock<Mutex<HashMap<String, Arc<AtomicBool>>>> = OnceLock::new();
+
+pub fn cancellation_registry() -> &'static Mutex<HashMap<String, Arc<AtomicBool>>> {
+    CANCELLATIONS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+pub async fn register_cancellation(conversation_id: &str) -> Arc<AtomicBool> {
+    let flag = Arc::new(AtomicBool::new(false));
+    let mut map = cancellation_registry().lock().await;
+    map.insert(conversation_id.to_string(), Arc::clone(&flag));
+    flag
+}
+
+pub async fn cancel_conversation(conversation_id: &str) -> bool {
+    let map = cancellation_registry().lock().await;
+    if let Some(flag) = map.get(conversation_id) {
+        flag.store(true, Ordering::SeqCst);
+        true
+    } else {
+        false
+    }
+}
+
+pub async fn is_conversation_cancelled(conversation_id: &str) -> bool {
+    let map = cancellation_registry().lock().await;
+    if let Some(flag) = map.get(conversation_id) {
+        flag.load(Ordering::SeqCst)
+    } else {
+        false
+    }
+}
+
+pub async fn unregister_cancellation(conversation_id: &str) {
+    let mut map = cancellation_registry().lock().await;
+    map.remove(conversation_id);
+}
+
 #[cfg(test)]
 mod tests {
     use super::kernel_base_url;

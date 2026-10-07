@@ -146,6 +146,11 @@ export function MessageStream({
                   <div className="bubble-body ai-bubble">
                     <div className="speaker-header">
                       <span className="speaker-name">{msg.speakerName}</span>
+                      {msg.paused && (
+                        <span className="paused-badge">
+                          {t("app.pausedByUser")}
+                        </span>
+                      )}
                     </div>
                     {(msg.reasoningContent || (msg.pending && (msg.content === t("app.thinking") || msg.content.includes(t("app.stageAnalyzing"))))) ? (
                       <ReasoningAccordion

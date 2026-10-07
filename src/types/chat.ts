@@ -74,6 +74,7 @@ export type ChatMessage = {
   avatar: string;
   pending?: boolean;
   error?: boolean;
+  paused?: boolean;
   promptTokens?: number | null;
   completionTokens?: number | null;
   latencyMs?: number | null;

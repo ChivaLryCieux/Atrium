@@ -133,6 +133,9 @@ pub async fn post_turn(
     let mut last_error_msg: Option<String> = None;
 
     while let Some(chunk_result) = stream.next().await {
+        if super::common::is_conversation_cancelled(&request.conversation_id).await {
+            break;
+        }
         let chunk = match chunk_result {
             Ok(c) => c,
             Err(e) => {
@@ -253,6 +256,23 @@ pub async fn post_turn(
                 _ => {}
             }
         }
+    }
+
+    if super::common::is_conversation_cancelled(&request.conversation_id).await {
+        return Ok(KernelTurnResponse {
+            session_id: request.conversation_id.clone(),
+            final_response: if accumulated_text.trim().is_empty() {
+                "*(操作员已暂停)*".to_string()
+            } else {
+                format!("{}\n\n*(操作员已暂停)*", accumulated_text.trim())
+            },
+            reasoning_content: if accumulated_reasoning.is_empty() { None } else { Some(accumulated_reasoning) },
+            input_tokens: None,
+            output_tokens: None,
+            usage: None,
+            tool_calls: if stream_tool_calls.is_empty() { None } else { Some(stream_tool_calls) },
+            kernel_route: Some("aborted".to_string()),
+        });
     }
 
     if let Some(mut turn) = final_turn {

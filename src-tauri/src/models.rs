@@ -121,6 +121,8 @@ pub struct ChatMessage {
     #[serde(default)]
     pub error: bool,
     #[serde(default)]
+    pub paused: bool,
+    #[serde(default)]
     pub prompt_tokens: Option<usize>,
     #[serde(default)]
     pub completion_tokens: Option<usize>,

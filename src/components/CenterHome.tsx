@@ -8,6 +8,7 @@ type CenterHomeProps = {
   draft: string;
   setDraft: (val: string) => void;
   onSend: () => void;
+  onPause?: () => void;
   isSending: boolean;
   activeProject: Project | null;
   fallbackProjectName: string;
@@ -28,6 +29,7 @@ export function CenterHome({
   draft,
   setDraft,
   onSend,
+  onPause,
   isSending,
   activeProject,
   fallbackProjectName,
@@ -73,6 +75,7 @@ export function CenterHome({
         draft={draft}
         setDraft={setDraft}
         onSend={onSend}
+        onPause={onPause}
         isSending={isSending}
         souls={souls}
         activeSoul={activeSoul}
