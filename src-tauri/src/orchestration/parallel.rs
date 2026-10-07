@@ -9,6 +9,7 @@ use super::transport::{post_turn, KernelTurnRequest};
 pub async fn execute_parallel_kernel(
     app: &AppHandle,
     http: &Client,
+    daemon_url: &str,
     profiles: &[AiProfile],
     base_messages: &[ChatMessage],
     conversation: &str,
@@ -17,7 +18,6 @@ pub async fn execute_parallel_kernel(
     project: Option<(&str, &str, Option<&str>)>,
     soul: Option<&str>,
 ) -> Vec<ChatMessage> {
-    let daemon_url = "http://127.0.0.1:19387";
     let user_input = latest_user_input(base_messages);
     let workspace = project.and_then(|(_, _, dir)| dir.map(str::to_string));
     let soul_block = soul.map(str::trim).filter(|s| !s.is_empty()).map(|s| format!("[人格设定]\n{s}\n\n"));

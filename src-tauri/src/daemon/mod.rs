@@ -76,18 +76,39 @@ impl DshDaemon {
             return Ok(self.connection.clone());
         }
 
-        let port: u16 = std::env::var("ATRIUM_BRIDGE_PORT")
+fn is_port_free(port: u16) -> bool {
+    std::net::TcpListener::bind(("127.0.0.1", port)).is_ok()
+}
+
+pub fn pick_bridge_port(preferred: u16) -> u16 {
+    if is_port_free(preferred) {
+        return preferred;
+    }
+    for p in (preferred + 1)..=(preferred.saturating_add(100)) {
+        if is_port_free(p) {
+            return p;
+        }
+    }
+    if let Ok(listener) = std::net::TcpListener::bind(("127.0.0.1", 0)) {
+        if let Ok(addr) = listener.local_addr() {
+            return addr.port();
+        }
+    }
+    preferred
+}
+
+        let preferred_port: u16 = std::env::var("ATRIUM_BRIDGE_PORT")
             .ok()
             .and_then(|p| p.parse().ok())
             .unwrap_or(19387);
 
-        let outcome = probe_health(http, port).await;
+        let outcome = probe_health(http, preferred_port).await;
         if !matches!(outcome, HealthOutcome::Unreachable) {
             self.apply_health_outcome(outcome);
             let conn = HarnessConnection {
                 status: "ready".to_string(),
-                url: format!("http://127.0.0.1:{port}"),
-                port,
+                url: format!("http://127.0.0.1:{preferred_port}"),
+                port: preferred_port,
                 token: Some("atrium-session-token".to_string()),
                 pipe: None,
                 pid: None,
@@ -96,6 +117,9 @@ impl DshDaemon {
             self.connection = conn.clone();
             return Ok(conn);
         }
+
+        let port = pick_bridge_port(preferred_port);
+        debug_log(&format!("start: preferred_port={preferred_port}, chosen_port={port}"));
 
         let resource_dir = tauri::Manager::path(app).resource_dir().ok().map(normalize_verbatim);
         let paths = bridge_paths(resource_dir.clone());
@@ -178,14 +202,22 @@ impl DshDaemon {
             std::thread::spawn(move || log_stream("bridge:stderr", stderr));
         }
 
-        #[cfg(target_os = "windows")]
-        let outcome = match crate::named_pipe_http::probe_pipe_health(&pipe_name, std::time::Duration::from_secs(20)).await {
-            crate::named_pipe_http::PipeHealthOutcome::Ready => HealthOutcome::Ready,
-            crate::named_pipe_http::PipeHealthOutcome::KernelMissing(detail) => HealthOutcome::KernelMissing(detail),
-            crate::named_pipe_http::PipeHealthOutcome::Unreachable => wait_for_health(http, port, 20).await,
+        tokio::time::sleep(std::time::Duration::from_millis(60)).await;
+        let early_exit = child.try_wait().ok().flatten();
+        let outcome = if let Some(status) = early_exit {
+            debug_log(&format!("bridge child process exited immediately with status: {status}"));
+            HealthOutcome::KernelMissing(format!("内核桥接进程启动后意外退出 ({status})"))
+        } else {
+            #[cfg(target_os = "windows")]
+            let outcome = match crate::named_pipe_http::probe_pipe_health(&pipe_name, std::time::Duration::from_secs(20)).await {
+                crate::named_pipe_http::PipeHealthOutcome::Ready => HealthOutcome::Ready,
+                crate::named_pipe_http::PipeHealthOutcome::KernelMissing(detail) => HealthOutcome::KernelMissing(detail),
+                crate::named_pipe_http::PipeHealthOutcome::Unreachable => wait_for_health(http, port, 20).await,
+            };
+            #[cfg(not(target_os = "windows"))]
+            let outcome = wait_for_health(http, port, 20).await;
+            outcome
         };
-        #[cfg(not(target_os = "windows"))]
-        let outcome = wait_for_health(http, port, 20).await;
 
         self.apply_health_outcome(outcome);
 

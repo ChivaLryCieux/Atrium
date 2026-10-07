@@ -50,8 +50,8 @@ pub async fn execute(
         })
         .unwrap_or(false);
 
-    let (kernel_ready, kernel_detail) = if !kernel_compatible {
-        (false, None)
+    let (kernel_ready, kernel_detail, daemon_url) = if !kernel_compatible {
+        (false, None, "http://127.0.0.1:19387".to_string())
     } else {
         let mut guard = daemon.lock().await;
         let _ = guard.ensure_running(http, app).await;
@@ -61,7 +61,8 @@ pub async fn execute(
         if !guard.kernel_available() {
             let _ = guard.start(http, app).await;
         }
-        (guard.kernel_available(), guard.kernel_detail().map(str::to_string))
+        let url = guard.connection.url.clone();
+        (guard.kernel_available(), guard.kernel_detail().map(str::to_string), url)
     };
 
     if !kernel_ready {
@@ -70,10 +71,10 @@ pub async fn execute(
 
     let conversation = conversation_id.unwrap_or_else(|| format!("adhoc-{}", Uuid::new_v4()));
     if mode == "parallel" {
-        Ok(execute_parallel_kernel(app, kernel_http, profiles, base_messages, &conversation, reasoning_effort, execution_mode, project, soul).await)
+        Ok(execute_parallel_kernel(app, kernel_http, &daemon_url, profiles, base_messages, &conversation, reasoning_effort, execution_mode, project, soul).await)
     } else if mode == "single" {
-        Ok(execute_single_kernel(app, kernel_http, profiles, base_messages, &conversation, reasoning_effort, execution_mode, project, soul).await)
+        Ok(execute_single_kernel(app, kernel_http, &daemon_url, profiles, base_messages, &conversation, reasoning_effort, execution_mode, project, soul).await)
     } else {
-        Ok(execute_dag_kernel(app, kernel_http, profiles, base_messages, &conversation, reasoning_effort, execution_mode, project, soul).await)
+        Ok(execute_dag_kernel(app, kernel_http, &daemon_url, profiles, base_messages, &conversation, reasoning_effort, execution_mode, project, soul).await)
     }
 }

@@ -75,18 +75,18 @@ pub async fn abort_orchestration(
     orchestration::cancel_conversation(&conversation_id).await;
 
     // 2. Notify kernel bridge / daemon over HTTP
-    let daemon_url = "http://127.0.0.1:19387";
+    let (daemon_url, token) = {
+        let daemon = state.daemon.lock().await;
+        (daemon.connection.url.clone(), daemon.connection.token.clone())
+    };
     let abort_url = format!("{daemon_url}/v1/abort");
     let payload = serde_json::json!({
         "conversationId": conversation_id,
     });
 
     let mut req_builder = state.http.post(&abort_url).json(&payload);
-    {
-        let daemon = state.daemon.lock().await;
-        if let Some(token) = &daemon.connection.token {
-            req_builder = req_builder.bearer_auth(token);
-        }
+    if let Some(token) = token {
+        req_builder = req_builder.bearer_auth(token);
     }
 
     let _ = req_builder.send().await;

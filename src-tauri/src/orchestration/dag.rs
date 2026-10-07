@@ -10,6 +10,7 @@ use super::transport::{post_turn, KernelTurnRequest};
 pub async fn execute_dag_kernel(
     app: &AppHandle,
     http: &Client,
+    daemon_url: &str,
     profiles: &[AiProfile],
     base_messages: &[ChatMessage],
     conversation: &str,
@@ -19,7 +20,6 @@ pub async fn execute_dag_kernel(
     soul: Option<&str>,
 ) -> Vec<ChatMessage> {
     let stages = build_stages(profiles);
-    let daemon_url = "http://127.0.0.1:19387";
     let user_input = latest_user_input(base_messages);
     let workspace = project.and_then(|(_, _, dir)| dir.map(str::to_string));
     let mut completed_replies: Vec<ChatMessage> = Vec::new();

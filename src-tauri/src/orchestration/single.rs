@@ -69,6 +69,7 @@ pub fn single_kernel_prompt(
 pub async fn execute_single_kernel(
     app: &AppHandle,
     http: &Client,
+    daemon_url: &str,
     profiles: &[AiProfile],
     base_messages: &[ChatMessage],
     conversation: &str,
@@ -80,7 +81,6 @@ pub async fn execute_single_kernel(
     let Some(profile) = profiles.first() else {
         return vec![];
     };
-    let daemon_url = "http://127.0.0.1:19387";
     let user_input = latest_user_input(base_messages);
     let workspace = project.and_then(|(_, _, dir)| dir.map(str::to_string));
     let fingerprint = single_route_fingerprint(

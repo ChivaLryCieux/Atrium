@@ -284,6 +284,9 @@ export function startBridgeServer() {
   })
 
   const wss = new WebSocketServer({ server: httpServer, path: '/events' })
+  wss.on('error', (err) => {
+    // Handled by httpServer error listener
+  })
   wss.on('connection', (socket, req) => {
     if (args.token) {
       try {
@@ -347,6 +350,12 @@ export function startBridgeServer() {
   })
 
   server.on('error', (error) => {
+    if (error.code === 'EADDRINUSE' && !process.env.ATRIUM_BRIDGE_STRICT_PORT) {
+      console.warn(`[ATRIUM_BRIDGE] Port ${args.port} is already in use, trying ${args.port + 1}...`)
+      args.port += 1
+      server.listen(args.port, args.host)
+      return
+    }
     console.error(`[ATRIUM_BRIDGE][FATAL] could not bind ${args.host}:${args.port}: ${error?.message ?? error}`)
     process.exit(1)
   })
