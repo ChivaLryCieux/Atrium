@@ -1,10 +1,10 @@
-import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useTranslation } from "react-i18next";
 import { TopBar } from "./components/TopBar";
 import { Sidebar, TaskSummary } from "./components/Sidebar";
 import { CenterHome } from "./components/CenterHome";
 import { PromptCard } from "./components/PromptCard";
-import type { TerminalSession } from "./components/TerminalPanel";
 import { PanelResizer } from "./components/PanelResizer";
 import { StageTelemetryHud } from "./components/StageTelemetryHud";
 import { GoalBar } from "./components/GoalBar";
@@ -12,14 +12,11 @@ import { MessageStream } from "./components/MessageStream";
 import { useToast } from "./components/Toast";
 import {
   AppSettings,
-  ChatMessage,
   ExecutionMode,
   Project,
   ReasoningEffort,
-  SessionSummary,
   Soul,
 } from "./types/chat";
-import { ensureUniqueMessageIds } from "./utils/messages";
 import { usePanelLayout } from "./hooks/usePanelLayout";
 import { buildCommandActions, useAvailableCommands } from "./hooks/useCommandActions";
 import { useAppBootstrap } from "./hooks/useAppBootstrap";
@@ -27,43 +24,51 @@ import { useKernelStreams } from "./hooks/useKernelStreams";
 import { useChatPersistence } from "./hooks/useChatPersistence";
 import { useComposerDrafts } from "./hooks/useComposerDrafts";
 import { useActiveProfile } from "./hooks/useActiveProfile";
-import { useSendMessage, generateSessionTitle } from "./hooks/useSendMessage";
+import { useSendMessage } from "./hooks/useSendMessage";
 import { useProjectSoulState } from "./hooks/useProjectSoulState";
-import { dshClient } from "./services/dshClient";
+import { useSessionState } from "./features/sessions/useSessionState";
+import { useTerminalState } from "./features/terminal/useTerminalState";
+import { AppModals } from "./features/modals/AppModals";
 import { applyTheme, normalizeThemeMode } from "./themes";
-import { useTranslation } from "react-i18next";
 import { matchesShortcut } from "./commands/registry";
 
 // ── Heavy / rarely-visible panels: lazy-split so three/ogl/xterm/md ──
 // ── stay out of the initial bundle (paired with manualChunks).     ──
-const SettingsView = lazy(() => import("./components/SettingsView").then((m) => ({ default: m.SettingsView })));
+const SettingsView = lazy(() => import("./features/settings/SettingsView").then((m) => ({ default: m.SettingsView })));
 const GitSourceControlPanel = lazy(() =>
-  import("./components/GitSourceControlPanel").then((m) => ({ default: m.GitSourceControlPanel })),
+  import("./features/git/GitSourceControlPanel").then((m) => ({ default: m.GitSourceControlPanel })),
 );
 const WorkspaceTreePanel = lazy(() =>
   import("./components/WorkspaceTreePanel").then((m) => ({ default: m.WorkspaceTreePanel })),
 );
 const TerminalPanel = lazy(() => import("./components/TerminalPanel").then((m) => ({ default: m.TerminalPanel })));
 const Grainient = lazy(() => import("./components/Grainient").then((m) => ({ default: m.Grainient })));
-const ProjectDialog = lazy(() => import("./components/ProjectDialog").then((m) => ({ default: m.ProjectDialog })));
-const SoulManagerDialog = lazy(() =>
-  import("./components/SoulManagerDialog").then((m) => ({ default: m.SoulManagerDialog })),
-);
-const AboutDialog = lazy(() => import("./components/AboutDialog").then((m) => ({ default: m.AboutDialog })));
-const CommandPalette = lazy(() => import("./components/CommandPalette").then((m) => ({ default: m.CommandPalette })));
 
 export function App() {
   const { t } = useTranslation();
   const { showToast } = useToast();
   const [settings, setSettings] = useState<AppSettings | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [projectDialog, setProjectDialog] = useState<{ mode: "create" | "edit"; projectId?: string } | null>(null);
   const [souls, setSouls] = useState<Soul[]>([]);
   const [isSoulDialogOpen, setIsSoulDialogOpen] = useState<boolean>(false);
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+
+  // ── Session State (extracted hook) ──
+  const {
+    messages,
+    setMessages,
+    sessions,
+    setSessions,
+    activeSessionId,
+    setActiveSessionId,
+    handleNewTask,
+    handleRenameSession,
+    handleSelectSession,
+    handleDeleteSession,
+    handleClearHistory,
+  } = useSessionState(activeProjectId, setActiveProjectId);
+
   const [activeProfileId, setActiveProfileId] = useState<string>("");
   const [selectedModel, setSelectedModel] = useState<string>("deepseek-flash");
   const [reasoningEffort, setReasoningEffort] = useState<"off" | "low" | "high" | "max">("high");
@@ -74,9 +79,20 @@ export function App() {
   const [currentView, setCurrentView] = useState<"workspace" | "settings">("workspace");
   const [isAboutOpen, setIsAboutOpen] = useState<boolean>(false);
   const [workspacePath, setWorkspacePath] = useState<string>("");
-  const [terminals, setTerminals] = useState<TerminalSession[]>([]);
-  const [activeTerminalId, setActiveTerminalId] = useState<string | null>(null);
-  const [isTerminalOpen, setIsTerminalOpen] = useState<boolean>(false);
+
+  // ── Terminal State (extracted hook) ──
+  const {
+    terminals,
+    activeTerminalId,
+    setActiveTerminalId,
+    isTerminalOpen,
+    setIsTerminalOpen,
+    handleNewTerminal,
+    handleTerminalCreated,
+    handleTerminalClosed,
+    handleCloseOneTerminal,
+  } = useTerminalState();
+
   const [activeGitProjectId, setActiveGitProjectId] = useState<string | null>(null);
   const [activeFilesProjectId, setActiveFilesProjectId] = useState<string | null>(null);
   const [isPaletteOpen, setIsPaletteOpen] = useState<boolean>(false);
@@ -129,7 +145,6 @@ export function App() {
     const mode = normalizeThemeMode(settings.themeMode);
     applyTheme(mode);
     if (mode === "system") {
-      // Follow the OS live: re-resolve whenever the preference flips.
       const media = window.matchMedia("(prefers-color-scheme: dark)");
       const onChange = () => applyTheme(mode);
       media.addEventListener("change", onChange);
@@ -166,50 +181,25 @@ export function App() {
     }
   };
 
-  // ── Clear History ────────────────────────────────────────────
-  const handleClearHistory = async () => {
-    setMessages([]);
-    setActiveSessionId(null);
-    setSessions([]);
-    try {
-      await invoke("clear_history");
-    } catch (err) {
-      console.error("Failed to clear history:", err);
-    }
-  };
+  // ── Active Project & Session ─────────────────────────────────
+  const activeProject = useMemo(
+    () => projects.find((p) => p.id === activeProjectId) ?? null,
+    [projects, activeProjectId]
+  );
 
-  // ── Start New Task (inside the given project) ─────────────────
-  const handleNewTask = async (projectId?: string) => {
-    const targetProjectId = projectId || activeProjectId;
-    if (targetProjectId) setActiveProjectId(targetProjectId);
-    try {
-      // Title numbering lives in the kernel (generate_session_title): the
-      // stored index is the source of truth, no local session scan needed.
-      const title = await generateSessionTitle(targetProjectId ?? null, t);
-      const created = await invoke<SessionSummary>("create_session", {
-        title,
-        projectId: targetProjectId,
-      });
-      setActiveSessionId(created.id);
-      setMessages([]);
-      // The composer swaps to the new session's (empty) draft via the
-      // activeSessionId effect — an explicit clear here would also wipe the
-      // preserved home draft when a task is started from the greeting stage.
-      setSessions((prev) => [created, ...prev.filter((s) => s.id !== created.id)]);
-    } catch (err) {
-      console.error(t("app.createSessionFailed"), err);
-    }
-  };
+  const activeSession = useMemo(
+    () => sessions.find((s) => s.id === activeSessionId) ?? null,
+    [sessions, activeSessionId]
+  );
 
-  // ── Rename Session ───────────────────────────────────────────
-  const handleRenameSession = async (sessionId: string, newTitle: string) => {
+  const openDirectory = activeProject?.defaultDirectory || workspacePath;
+
+  const handleOpenWorkspace = async () => {
+    if (!openDirectory) return;
     try {
-      await invoke("rename_session", { sessionId, newTitle });
-      setSessions((prev) =>
-        prev.map((s) => (s.id === sessionId ? { ...s, title: newTitle } : s))
-      );
+      await invoke("open_path_in_explorer", { path: openDirectory });
     } catch (err) {
-      console.error("Failed to rename session:", err);
+      console.error("Failed to open path:", err);
     }
   };
 
@@ -236,64 +226,7 @@ export function App() {
     handleSaveSettings,
   );
 
-  // ── Select Existing Session ──────────────────────────────────
-  const handleSelectSession = async (sessionId: string) => {
-    if (sessionId === activeSessionId) return;
-    try {
-      const msgs = await invoke<ChatMessage[]>("load_session_messages", { sessionId });
-      setActiveSessionId(sessionId);
-      setMessages(ensureUniqueMessageIds(msgs || []));
-    } catch (err) {
-      console.error(t("app.loadSessionFailed"), err);
-    }
-  };
-
-  // ── Delete Session ───────────────────────────────────────────
-  const handleDeleteSession = async (sessionId: string) => {
-    try {
-      await invoke("delete_session", { sessionId });
-      const updated = sessions.filter((s) => s.id !== sessionId);
-      setSessions(updated);
-      if (activeSessionId === sessionId) {
-        if (updated.length > 0) {
-          handleSelectSession(updated[0].id);
-        } else {
-          setActiveSessionId(null);
-          setMessages([]);
-        }
-      }
-    } catch (err) {
-      console.error(t("app.deleteSessionFailed"), err);
-    }
-  };
-
-  // ── Open Workspace Directory (active project's default directory) ──
-  const activeProject = useMemo(
-    () => projects.find((p) => p.id === activeProjectId) ?? null,
-    [projects, activeProjectId]
-  );
-
-  const activeSession = useMemo(
-    () => sessions.find((s) => s.id === activeSessionId) ?? null,
-    [sessions, activeSessionId]
-  );
-
-  const openDirectory = activeProject?.defaultDirectory || workspacePath;
-
-  const handleOpenWorkspace = async () => {
-    if (!openDirectory) return;
-    try {
-      await invoke("open_path_in_explorer", { path: openDirectory });
-    } catch (err) {
-      console.error("Failed to open path:", err);
-    }
-  };
-
-  // ── Model selection: (provider, model) pair ────────────────
-  // The picked pair is persisted as the app default: switching provider
-  // flips the active profile, stores the model as that provider's
-  // default, and records activeProfileId/selectedModel on settings so
-  // the choice is restored verbatim on the next launch.
+  // ── Model & Mode selection ───────────────────────────────────
   const handleSelectModel = (profileId: string, modelName: string) => {
     setActiveProfileId(profileId);
     setSelectedModel(modelName);
@@ -309,7 +242,6 @@ export function App() {
     }
   };
 
-  // ── Reasoning effort selection (persisted) ───────────────────
   const handleSelectReasoningEffort = (effort: ReasoningEffort) => {
     setReasoningEffort(effort);
     if (settings) {
@@ -317,7 +249,6 @@ export function App() {
     }
   };
 
-  // ── Execution mode selection (persisted) ─────────────────────
   const handleSelectExecutionMode = (mode: ExecutionMode) => {
     setExecutionMode(mode);
     if (settings) {
@@ -325,7 +256,7 @@ export function App() {
     }
   };
 
-  // ── Send pipeline (verbatim move → hooks/useSendMessage) ────
+  // ── Send pipeline ────────────────────────────────────────────
   const { handleSend } = useSendMessage({
     settings,
     activeProfile,
@@ -349,52 +280,15 @@ export function App() {
     t,
   });
 
-  // ── Embedded terminal dock (bottom of main area) ─────────────
   const terminalCwd = useMemo(() => {
     return activeProject?.defaultDirectory || workspacePath || "";
   }, [activeProject, workspacePath]);
 
-  const handleNewTerminal = () => {
-    const id = crypto.randomUUID();
-    const seed: TerminalSession = {
-      id,
-      title: t("terminal.fallbackTitle"),
-      cwd: terminalCwd,
-    };
-    setTerminals((prev) => [...prev, seed]);
-    setActiveTerminalId(id);
-    setIsTerminalOpen(true);
-    setCurrentView("workspace");
+  const onNewTerminalClick = () => {
+    handleNewTerminal(terminalCwd, () => setCurrentView("workspace"));
   };
 
-  const handleTerminalCreated = (info: TerminalSession) => {
-    setTerminals((prev) => prev.map((t) => (t.id === info.id ? info : t)));
-  };
-
-  const handleTerminalClosed = (id: string) => {
-    setTerminals((prev) => {
-      const next = prev.filter((t) => t.id !== id);
-      setActiveTerminalId((cur) => {
-        if (cur !== id) return cur;
-        return next.length > 0 ? next[next.length - 1].id : null;
-      });
-      if (next.length === 0) setIsTerminalOpen(false);
-      return next;
-    });
-  };
-
-  const handleCloseOneTerminal = async (id: string) => {
-    // Close backend first so its exit event (which also removes the tab)
-    // stays idempotent; then drop the tab locally.
-    try {
-      await invoke("close_terminal", { id });
-    } catch {
-      /* backend already reaped */
-    }
-    handleTerminalClosed(id);
-  };
-
-  // ── Copy a settled message to the clipboard (toast feedback) ──
+  // ── Copy message to clipboard ────────────────────────────────
   const copyMessage = async (content: string) => {
     try {
       await navigator.clipboard.writeText(content);
@@ -415,8 +309,6 @@ export function App() {
   }, [sessions]);
 
   // ── Command palette wiring ────────────────────────────────────
-  // A command is offered only when its action is wired and meaningful in the
-  // current state (e.g. the git panel toggle needs an active project).
   const commandActions = useMemo<Record<string, () => void>>(
     () =>
       buildCommandActions({
@@ -424,7 +316,7 @@ export function App() {
         activeProjectId,
         onNewTask: () => void handleNewTask(),
         onNewProject: () => setProjectDialog({ mode: "create" }),
-        onNewTerminal: handleNewTerminal,
+        onNewTerminal: onNewTerminalClick,
         onOpenSettings: () => setCurrentView("settings"),
         onOpenSouls: () => setIsSoulDialogOpen(true),
         onOpenAbout: () => setIsAboutOpen(true),
@@ -452,7 +344,7 @@ export function App() {
     [sidebarTasks, projects],
   );
 
-  // ── Keyboard shortcuts (Ctrl+N new task · Ctrl+K / Ctrl+Shift+P palette) ──
+  // ── Keyboard shortcuts (Ctrl+N · Ctrl+K / Ctrl+Shift+P) ──────
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (matchesShortcut(e, "Ctrl+N")) {
@@ -480,7 +372,7 @@ export function App() {
       <TopBar
         sidebarCollapsed={isSidebarCollapsed}
         onToggleSidebar={() => setIsSidebarCollapsed((prev) => !prev)}
-        onNewTerminal={handleNewTerminal}
+        onNewTerminal={onNewTerminalClick}
         onOpenAbout={() => setIsAboutOpen(true)}
         projectName={activeProject?.name?.trim() || workspaceName || "初始空间"}
       />
@@ -557,7 +449,7 @@ export function App() {
             </>
           )}
 
-          {/* Source Control Secondary Sidebar (VS Code Style) */}
+          {/* Source Control Secondary Sidebar */}
           {activeGitProjectId && (
             <>
               <Suspense fallback={null}>
@@ -592,28 +484,28 @@ export function App() {
                     pointerEvents: "none",
                     zIndex: 0,
                   }}
-                color1="#dfceaf"
-                color2="#D4A26A"
-                color3="#5C4A3E"
-                timeSpeed={0.8}
-                colorBalance={0}
-                warpStrength={1.2}
-                warpFrequency={8.5}
-                warpSpeed={2}
-                warpAmplitude={50}
-                blendAngle={0}
-                blendSoftness={0.05}
-                rotationAmount={500}
-                noiseScale={2}
-                grainAmount={0.1}
-                grainScale={2}
-                grainAnimated={false}
-                contrast={1.5}
-                gamma={1}
-                saturation={1}
-                centerX={0}
-                centerY={0}
-                zoom={0.9}
+                  color1="#dfceaf"
+                  color2="#D4A26A"
+                  color3="#5C4A3E"
+                  timeSpeed={0.8}
+                  colorBalance={0}
+                  warpStrength={1.2}
+                  warpFrequency={8.5}
+                  warpSpeed={2}
+                  warpAmplitude={50}
+                  blendAngle={0}
+                  blendSoftness={0.05}
+                  rotationAmount={500}
+                  noiseScale={2}
+                  grainAmount={0.1}
+                  grainScale={2}
+                  grainAnimated={false}
+                  contrast={1.5}
+                  gamma={1}
+                  saturation={1}
+                  centerX={0}
+                  centerY={0}
+                  zoom={0.9}
                 />
               </Suspense>
               <StageTelemetryHud
@@ -645,7 +537,7 @@ export function App() {
                   onSelectExecutionMode={handleSelectExecutionMode}
                 />
               ) : (
-                /* Active Conversation View — WeChat style: avatar + bubble rows */
+                /* Active Conversation View */
                 <div className="chat-conversation-view">
                   <GoalBar
                     goalText={activeSession?.title || messages[0]?.content?.slice(0, 80) || null}
@@ -717,69 +609,39 @@ export function App() {
         </div>
       )}
 
-      {/* Project create / settings dialog */}
-      {projectDialog && (
-        <Suspense fallback={null}>
-          <ProjectDialog
-            mode={projectDialog.mode}
-            project={
-              projectDialog.mode === "edit"
-                ? projects.find((p) => p.id === projectDialog.projectId) ?? null
-                : null
-            }
-            fallbackDirectory={workspacePath}
-            isLastProject={projects.length <= 1}
-            fallbackProjectName={projects.find((p) => p.id !== projectDialog.projectId)?.name}
-            onClose={() => setProjectDialog(null)}
-            onSaved={handleProjectSaved}
-            onDeleted={handleProjectDeleted}
-          />
-        </Suspense>
-      )}
-
-      {/* Souls (persona) manager */}
-      {isSoulDialogOpen && (
-        <Suspense fallback={null}>
-          <SoulManagerDialog
-            souls={souls}
-            activeSoul={activeSoulFolder}
-            onActivate={handleActivateSoul}
-            onChanged={handleSoulsChanged}
-            onDeleted={handleSoulDeleted}
-            onClose={() => setIsSoulDialogOpen(false)}
-          />
-        </Suspense>
-      )}
-
-      {/* About / Charter Modal (question-mark button · Ctrl+K palette entry) */}
-      {isAboutOpen && (
-        <Suspense fallback={null}>
-          <AboutDialog onClose={() => setIsAboutOpen(false)} />
-        </Suspense>
-      )}
-
-      {/* Command Center (Ctrl+K / Ctrl+Shift+P) */}
-      {isPaletteOpen && (
-        <Suspense fallback={null}>
-          <CommandPalette
-            onClose={() => setIsPaletteOpen(false)}
-            commands={availableCommands}
-            tasks={paletteTasks}
-            projects={projects.map((p) => ({ id: p.id, name: p.name }))}
-            activeTaskId={activeSessionId}
-            activeProjectId={activeProjectId}
-            onRunCommand={(id) => commandActions[id]?.()}
-            onSelectTask={(id) => {
-              setCurrentView("workspace");
-              void handleSelectSession(id);
-            }}
-            onSelectProject={(id) => {
-              setCurrentView("workspace");
-              setActiveProjectId(id);
-            }}
-          />
-        </Suspense>
-      )}
+      {/* Global Modals (Extracted Feature Component) */}
+      <AppModals
+        projectDialog={projectDialog}
+        setProjectDialog={setProjectDialog}
+        projects={projects}
+        workspacePath={workspacePath}
+        onProjectSaved={handleProjectSaved}
+        onProjectDeleted={handleProjectDeleted}
+        isSoulDialogOpen={isSoulDialogOpen}
+        setIsSoulDialogOpen={setIsSoulDialogOpen}
+        souls={souls}
+        activeSoulFolder={activeSoulFolder}
+        onActivateSoul={handleActivateSoul}
+        onSoulsChanged={handleSoulsChanged}
+        onSoulDeleted={handleSoulDeleted}
+        isAboutOpen={isAboutOpen}
+        setIsAboutOpen={setIsAboutOpen}
+        isPaletteOpen={isPaletteOpen}
+        setIsPaletteOpen={setIsPaletteOpen}
+        availableCommands={availableCommands}
+        paletteTasks={paletteTasks}
+        activeSessionId={activeSessionId}
+        activeProjectId={activeProjectId}
+        commandActions={commandActions}
+        onSelectTask={(id) => {
+          setCurrentView("workspace");
+          void handleSelectSession(id);
+        }}
+        onSelectProject={(id) => {
+          setCurrentView("workspace");
+          setActiveProjectId(id);
+        }}
+      />
     </div>
   );
 }
