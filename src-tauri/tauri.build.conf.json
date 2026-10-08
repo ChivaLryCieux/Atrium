@@ -1,6 +1,14 @@
 {
   "productName": "智役中庭",
   "bundle": {
+    "windows": {
+      "nsis": {
+        "installerIcon": "icons/icon.ico",
+        "uninstallerIcon": "icons/icon.ico",
+        "headerImage": "icons/nsis-header.bmp",
+        "sidebarImage": "icons/nsis-sidebar.bmp"
+      }
+    },
     "resources": {
       "resources/bridge": "bridge/",
       "resources/cordis": "cordis/",
