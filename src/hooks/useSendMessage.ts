@@ -42,8 +42,10 @@ export type SendPipelineDeps = {
 
 /**
  * Core send pipeline: ensure session → optimistic user+pending nodes →
- * dual-channel live merge (Tauri events + WS fallback) → settle merge
- * (token high-water-mark, toolCalls, reasoning) → persist.
+ * invoke orchestration → settle merge (token high-water-mark, toolCalls,
+ * reasoning) → persist. Live stream merging is owned exclusively by the
+ * always-on useKernelStreams fan-in; this pipeline only handles the final
+ * settle, so there is exactly one merge path and nothing to double-apply.
  */
 export function useSendMessage(deps: SendPipelineDeps) {
   const handleSend = async (overrideText?: unknown) => {
@@ -83,7 +85,6 @@ async function sendPipeline(d: SendPipelineDeps, overrideText?: string) {
   d.setMessages([...baseMessages, ...pendingMessages]);
 
   let unlistenProgress: (() => void) | null = null;
-  let unlistenStreamEvent: (() => void) | null = null;
 
   try {
     unlistenProgress = await listen<OrchestrationProgressEvent>(
@@ -100,10 +101,6 @@ async function sendPipeline(d: SendPipelineDeps, overrideText?: string) {
           );
         }
       }
-    );
-
-    unlistenStreamEvent = await listen<any>("kernel-stream-event", (event) =>
-      mergeKernelEvent(d, event.payload)
     );
 
     const finalReplies = await invoke<ChatMessage[]>("execute_orchestration", {
@@ -126,38 +123,56 @@ async function sendPipeline(d: SendPipelineDeps, overrideText?: string) {
       unlistenProgress();
       unlistenProgress = null;
     }
-    if (unlistenStreamEvent) {
-      unlistenStreamEvent();
-      unlistenStreamEvent = null;
+    // Session-switch guard: if the operator navigated away mid-turn, the view
+    // now shows another session — the server-side persist already recorded
+    // this turn keyed by conversation, so simply leave the current view alone.
+    if (d.activeSessionIdRef.current === curSessionId) {
+      d.setMessages((prev) => settleReplies(d, prev, baseMessages, finalReplies, curSessionId));
     }
-    d.setMessages((prev) => settleReplies(d, prev, baseMessages, finalReplies, curSessionId));
+    refreshSessionIndex(d, curSessionId, baseMessages.length + finalReplies.length);
   } catch (error) {
     if (!d.isSendingRef.current) {
       // Intentionally aborted / paused by operator, do not treat as dispatch failure
       return;
     }
-    d.setMessages((prev) =>
-      prev.map((msg) =>
-        msg.pending
-          ? {
-              ...msg,
-              content: `${t("app.dispatchError")} ${String(error)}`,
-              pending: false,
-              error: true,
-            }
-          : msg
-      )
-    );
+    if (d.activeSessionIdRef.current === curSessionId) {
+      d.setMessages((prev) =>
+        prev.map((msg) =>
+          msg.pending
+            ? {
+                ...msg,
+                content: `${t("app.dispatchError")} ${String(error)}`,
+                pending: false,
+                error: true,
+              }
+            : msg
+        )
+      );
+    }
   } finally {
     if (unlistenProgress) {
       unlistenProgress();
     }
-    if (unlistenStreamEvent) {
-      unlistenStreamEvent();
-    }
     d.isSendingRef.current = false;
     d.setIsSending(false);
   }
+}
+
+/**
+ * Bump the touched session's index row (messageCount / updatedAt) from the
+ * payload already in memory — no extra list_sessions round-trip. The server
+ * side persists the message file + index inside execute_orchestration; this
+ * only keeps the local sidebar ordering in step.
+ */
+function refreshSessionIndex(d: SendPipelineDeps, curSessionId: string | null, messageCount: number) {
+  if (!curSessionId) return;
+  d.setSessions((prevSessions) =>
+    prevSessions.map((s) =>
+      s.id === curSessionId
+        ? { ...s, messageCount, updatedAt: Math.floor(Date.now() / 1000) }
+        : s
+    )
+  );
 }
 
 async function pausePipeline(d: SendPipelineDeps) {
@@ -265,94 +280,6 @@ function buildPendingMessages(d: SendPipelineDeps, t: (key: string) => string): 
   return createPendingMessages([profile]);
 }
 
-function mergeKernelEvent(d: SendPipelineDeps, payload: any) {
-  if (!payload || typeof payload !== "object") return;
-  const active = d.activeSessionIdRef.current;
-  if (payload.conversationId && active && !payload.conversationId.startsWith(active)) return;
-
-  if (payload.type === "assistant-stream") {
-    const { stageId, content, isReasoning } = payload;
-    if (!content) return;
-    d.setMessages((prev) =>
-      prev.map((msg) => {
-        const matches = stageId ? msg.id === stageId : msg.pending && msg.role === "assistant";
-        if (!matches || !msg.pending) return msg;
-        if (isReasoning) {
-          return { ...msg, reasoningContent: (msg.reasoningContent || "") + content };
-        }
-        const isPlaceholder =
-          msg.content === d.tRef.current("app.thinking") ||
-          msg.content.includes(d.tRef.current("app.stageAnalyzing")) ||
-          (msg.content.startsWith("[") && msg.content.includes("]"));
-        return { ...msg, content: isPlaceholder ? content : msg.content + content };
-      })
-    );
-  } else if (payload.type === "tool-event") {
-    const { stageId, event: toolEvt } = payload;
-    if (!toolEvt) return;
-    d.setMessages((prev) =>
-      prev.map((m) => {
-        const matches = stageId ? m.id === stageId : m.pending && m.role === "assistant";
-        if (!matches) return m;
-        const currentTools = Array.isArray(m.toolCalls) ? [...m.toolCalls] : [];
-        if (toolEvt.kind === "call") {
-          const item = toolEvt.item;
-          const idx = currentTools.findIndex((t) => t.id === item.id);
-          if (idx >= 0) currentTools[idx] = { ...currentTools[idx], ...item };
-          else currentTools.push(item);
-        } else if (toolEvt.kind === "result") {
-          const { callId, result, isError, error, status } = toolEvt;
-          const idx = currentTools.findIndex((t) => t.id === callId);
-          if (idx >= 0) {
-            currentTools[idx] = { ...currentTools[idx], result, isError, error, status };
-          } else {
-            currentTools.push({
-              id: callId,
-              name: "tool",
-              arguments: "",
-              result,
-              isError,
-              error,
-              status,
-              timestamp: Date.now(),
-            });
-          }
-        }
-        return { ...m, toolCalls: currentTools };
-      })
-    );
-  } else if (payload.type === "token-usage") {
-    return mergeTokenUsage(d, payload);
-  } else if (payload.type === "agent-status") {
-    return mergeAgentStatus(d, payload);
-  }
-}
-
-function mergeTokenUsage(d: SendPipelineDeps, payload: any) {
-  const { stageId, usage } = payload;
-  if (!usage) return;
-  d.setMessages((prev) =>
-    prev.map((m) => {
-      const matches = stageId ? m.id === stageId : m.pending && m.role === "assistant";
-      if (!matches) return m;
-      // 同 WS 监听：乱序的小额用量通知不得让计量回落。
-      return { ...m, ...mergeTokenHighWaterMark(m, usage) };
-    })
-  );
-}
-
-function mergeAgentStatus(d: SendPipelineDeps, payload: any) {
-  const { stageId, detail } = payload;
-  if (!detail) return;
-  d.setMessages((prev) =>
-    prev.map((m) => {
-      const matches = stageId ? m.id === stageId : m.pending && m.role === "assistant";
-      if (!matches || !m.pending) return m;
-      return { ...m, statusDetail: detail };
-    })
-  );
-}
-
 function settleReplies(
   d: SendPipelineDeps,
   prev: ChatMessage[],
@@ -395,19 +322,5 @@ function settleReplies(
       paused: reply.paused || pending?.paused || false,
     };
   });
-  // Persistence + index refresh happen server-side inside
-  // execute_orchestration (message file + updated_at/message_count in the
-  // index). The local list keeps its ordering; just bump the touched
-  // session's row from the payload we already have — no extra round-trip.
-  if (curSessionId) {
-    const updatedMessages = [...baseMessages, ...mergedReplies];
-    d.setSessions((prevSessions) =>
-      prevSessions.map((s) =>
-        s.id === curSessionId
-          ? { ...s, messageCount: updatedMessages.length, updatedAt: Math.floor(Date.now() / 1000) }
-          : s
-      )
-    );
-  }
   return [...baseMessages, ...mergedReplies];
 }

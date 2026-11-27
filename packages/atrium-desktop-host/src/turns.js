@@ -1,4 +1,4 @@
-import { broadcast, broadcastTelemetry } from './ws_broadcast.js'
+import { broadcast, broadcastTelemetry, stampSeq } from './ws_broadcast.js'
 import { routeKey } from './routes.js'
 import {
   conversations,
@@ -38,6 +38,9 @@ export function handleNotification(route, notification, state, sseWrite) {
   const { conversationId, stageId } = route
 
   const _emit = (payload) => {
+    // One logical event, one seq — stamped before either channel serializes,
+    // so the WS copy and the SSE-relayed copy are exact duplicates.
+    stampSeq(payload)
     broadcast(payload)
     if (sseWrite) sseWrite(payload)
   }
@@ -300,6 +303,8 @@ export function runTurn(request, sseWrite) {
     const turnRoute = { conversationId, stageId }
     const state = { usage: null, toolCalls: [], reasoningText: '', emittedText: '', aborted: false }
 
+    const effectivePrompt = prompt
+
     const handle = {
       entry,
       state,
@@ -331,7 +336,7 @@ export function runTurn(request, sseWrite) {
 
       let result
       try {
-        result = await entry.harness.run(prompt, {
+        result = await entry.harness.run(effectivePrompt, {
           ...(record.dshSessionId ? { sessionId: record.dshSessionId } : {}),
           onNotification: (notification) => handleNotification(turnRoute, notification, state, sseWrite),
         })

@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { SequencedEventDedup } from '../utils/eventDedup';
 
 export interface HarnessConnectionInfo {
   status: 'standby' | 'ready' | 'connected' | 'stopped' | 'error';
@@ -85,7 +86,7 @@ class DshClient {
   private kernelStatusListeners: Set<KernelStatusListener> = new Set();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private nativeUnlisten: UnlistenFn | null = null;
-  private recentEventKeys: Set<string> = new Set();
+  private dedup = new SequencedEventDedup();
 
   async init(): Promise<HarnessConnectionInfo> {
     try {
@@ -137,25 +138,16 @@ class DshClient {
 
       this.ws.onopen = () => {
         this.connection.status = 'connected';
+        // A (re)connect may mean a fresh bridge process; seq monotonicity is
+        // per-process, so the dedup window must not carry stale keys over.
+        this.dedup.reset();
         console.log('[DshClient] WebSocket connected to kernel bridge:', wsUrl);
       };
 
       this.ws.onmessage = (event) => {
         try {
           const payload = JSON.parse(event.data);
-          if (payload.type === 'assistant-stream') {
-            this.streamListeners.forEach((fn) => fn(payload));
-          } else if (payload.type === 'tool-event') {
-            this.toolEventListeners.forEach((fn) => fn(payload));
-          } else if (payload.type === 'token-usage') {
-            this.tokenUsageListeners.forEach((fn) => fn(payload));
-          } else if (payload.type === 'agent-status') {
-            this.agentStatusListeners.forEach((fn) => fn(payload));
-          } else if (payload.type === 'telemetry') {
-            this.telemetryListeners.forEach((fn) => fn(payload));
-          } else if (payload.type === 'kernel-status') {
-            this.kernelStatusListeners.forEach((fn) => fn(payload));
-          }
+          this.dispatchPayload(payload);
         } catch (e) {
           console.error('[DshClient] Failed to parse message:', e);
         }
@@ -225,7 +217,7 @@ class DshClient {
     try {
       this.nativeUnlisten = await listen<any>('kernel-stream-event', (event) => {
         if (event?.payload) {
-          this.dispatchPayload(event.payload, 'ipc');
+          this.dispatchPayload(event.payload);
         }
       });
       console.log('[DshClient] Native Rust IPC event multiplexer registered');
@@ -234,23 +226,14 @@ class DshClient {
     }
   }
 
-  private dispatchPayload(payload: any, source: 'ipc' | 'ws' = 'ws') {
+  private dispatchPayload(payload: any) {
     if (!payload || typeof payload !== 'object') return;
 
-    // Deduplicate identical events received simultaneously over dual channels
-    if (payload.conversationId && (payload.turn !== undefined || payload.step !== undefined)) {
-      const dedupKey = `${payload.type}:${payload.conversationId}:${payload.turn}:${payload.step}:${payload.stageId || ''}:${payload.content?.slice(0, 30) || ''}`;
-      if (this.recentEventKeys.has(dedupKey)) return;
-      this.recentEventKeys.add(dedupKey);
-      if (this.recentEventKeys.size > 200) {
-        // Drop oldest entries
-        const iter = this.recentEventKeys.values();
-        for (let i = 0; i < 50; i++) {
-          const val = iter.next().value;
-          if (val) this.recentEventKeys.delete(val);
-        }
-      }
-    }
+    // Dual-channel delivery (WS direct + SSE→Rust→IPC relay) means every
+    // kernel event arrives twice by design. The bridge stamps one logical
+    // event with a single seq before either channel serializes it, so this
+    // dedup is exact — no content hashing, no ordering assumptions.
+    if (this.dedup.isDuplicate(payload)) return;
 
     if (payload.type === 'assistant-stream') {
       this.streamListeners.forEach((fn) => fn(payload));
@@ -264,6 +247,10 @@ class DshClient {
       this.telemetryListeners.forEach((fn) => fn(payload));
     } else if (payload.type === 'kernel-status') {
       this.kernelStatusListeners.forEach((fn) => fn(payload));
+    } else if (payload.type === 'plugin-install-log' || payload.type === 'plugin-status') {
+      // Plugin manager progress/lifecycle events ride the misc telemetry
+      // listener channel (they are WS-only, never relayed over IPC).
+      this.telemetryListeners.forEach((fn) => fn(payload));
     }
   }
 
