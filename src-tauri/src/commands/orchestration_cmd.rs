@@ -13,6 +13,16 @@ pub async fn execute_orchestration(
         orchestration::register_cancellation(cid).await;
     }
 
+    // Single-writer persistence, first half: the operator's input (and any
+    // history carried in the request) is durable BEFORE the turn starts.
+    // A crash mid-turn no longer loses the prompt; the streamed reply is
+    // ephemeral by nature because the kernel dies with the shell anyway.
+    if let Some(session_id) = &request.conversation_id {
+        if let Err(err) = storage::save_session_messages(&app, session_id, &request.messages) {
+            eprintln!("[orchestration] turn-start persist failed: {err}");
+        }
+    }
+
     let project = request
         .conversation_id
         .as_ref()
@@ -46,7 +56,36 @@ pub async fn execute_orchestration(
         orchestration::unregister_cancellation(cid).await;
     }
 
-    let replies = res?;
+    // Kernel-unavailable errors are materialized as error replies rather than
+    // thrown across IPC: they flow through the same persist + render path as
+    // per-turn failures, so the operator keeps a durable record of what
+    // happened instead of a transient bubble that vanishes on reload.
+    let replies = match res {
+        Ok(replies) => replies,
+        Err(err) => request
+            .profiles
+            .first()
+            .map(|profile| {
+                vec![ChatMessage {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    role: "assistant".to_string(),
+                    content: err,
+                    speaker_id: Some(profile.id.clone()),
+                    speaker_name: profile.name.clone(),
+                    avatar: profile.avatar.clone(),
+                    pending: false,
+                    error: true,
+                    paused: false,
+                    prompt_tokens: None,
+                    completion_tokens: None,
+                    latency_ms: None,
+                    tool_calls: None,
+                    reasoning_content: None,
+                    reasoning_duration_ms: None,
+                }]
+            })
+            .unwrap_or_default(),
+    };
 
     if let Some(session_id) = &request.conversation_id {
         let mut persisted = request.messages.clone();

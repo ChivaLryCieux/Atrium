@@ -21,7 +21,6 @@ import { usePanelLayout } from "./hooks/usePanelLayout";
 import { buildCommandActions, useAvailableCommands } from "./hooks/useCommandActions";
 import { useAppBootstrap } from "./hooks/useAppBootstrap";
 import { useKernelStreams } from "./hooks/useKernelStreams";
-import { useChatPersistence } from "./hooks/useChatPersistence";
 import { useComposerDrafts } from "./hooks/useComposerDrafts";
 import { useActiveProfile } from "./hooks/useActiveProfile";
 import { useSendMessage } from "./hooks/useSendMessage";
@@ -159,8 +158,8 @@ export function App() {
     document.body.style.zoom = String(zoom);
   }, [settings?.fontSize]);
 
-  // ── Persist chat history (debounced) ─────────────────────────
-  useChatPersistence(settings, messages, activeSessionId, setSessions);
+  // Session persistence is single-writer server-side (execute_orchestration
+  // writes at turn start + settle); no frontend autosave loop here.
 
   // ── Composer drafts: per-session persistence ─────────────────
   useComposerDrafts(draft, activeSessionId, setDraft);

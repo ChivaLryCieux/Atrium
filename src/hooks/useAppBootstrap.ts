@@ -85,6 +85,9 @@ export function useAppBootstrap(setters: AppBootstrapSetters, tRef: MutableRefOb
                     sessionId: created.id,
                     messages: cached,
                   });
+                  // Migration is one-shot: empty the legacy file so deleting
+                  // all sessions later does not resurrect ancient history.
+                  await invoke("save_history", { messages: [] }).catch(() => undefined);
                   setters.setSessions([created]);
                   setters.setActiveSessionId(created.id);
                   setters.setMessages(ensureUniqueMessageIds(cached));
