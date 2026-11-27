@@ -94,6 +94,16 @@ export function startBridgeServer() {
 
     const url = (req.url ?? '').split('?')[0]
 
+    // Uniform auth: every endpoint except the read-only health probes requires
+    // the session token. /v1/turn spends the operator's API quota and the
+    // plugin endpoints install executable code — leaving them open meant any
+    // local process could drive the kernel.
+    const OPEN_ENDPOINTS = new Set(['/healthz', '/status', '/api/harness/info'])
+    if (!OPEN_ENDPOINTS.has(url) && !authenticate(req)) {
+      sendJson(res, 401, { error: 'Unauthorized: invalid or missing Atrium IPC token' })
+      return
+    }
+
     try {
       if (req.method === 'GET' && (url === '/healthz' || url === '/status')) {
         sendJson(res, 200, {
@@ -177,10 +187,6 @@ export function startBridgeServer() {
       }
 
       if (req.method === 'POST' && url === '/v1/reset') {
-        if (!authenticate(req)) {
-          sendJson(res, 401, { error: 'Unauthorized: invalid or missing Atrium IPC token' })
-          return
-        } 
         const { conversationId } = await readBody(req)
         if (conversationId) conversations.delete(String(conversationId))
         else conversations.clear()

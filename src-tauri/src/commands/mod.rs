@@ -7,6 +7,7 @@ pub mod daemon_cmd;
 pub mod terminal_cmd;
 pub mod git_cmd;
 pub mod system_cmd;
+pub mod plugin_cmd;
 
 #[allow(unused_imports)]
 pub use settings_cmd::*;
@@ -26,3 +27,5 @@ pub use terminal_cmd::*;
 pub use git_cmd::*;
 #[allow(unused_imports)]
 pub use system_cmd::*;
+#[allow(unused_imports)]
+pub use plugin_cmd::*;

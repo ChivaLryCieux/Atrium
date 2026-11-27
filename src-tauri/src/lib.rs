@@ -98,6 +98,12 @@ pub fn run() {
             commands::git_fetch,
             commands::git_get_log,
             commands::git_get_diff,
+            commands::list_plugins,
+            commands::toggle_plugin_bundle,
+            commands::toggle_patch_plugin,
+            commands::install_plugin,
+            commands::remove_plugin,
+            commands::inspect_plugin,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Atrium")

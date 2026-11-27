@@ -1,4 +1,11 @@
-import { dshClient } from "./dshClient";
+import { invoke } from "@tauri-apps/api/core";
+
+/**
+ * Plugin management goes through the Tauri command layer like every other
+ * frontend↔backend interaction (AGENTS.md §1.5). The Rust proxy attaches the
+ * bridge session token server-side; the webview never talks to the kernel
+ * bridge HTTP API directly.
+ */
 
 export interface PluginBundle {
   name: string;
@@ -27,120 +34,51 @@ export interface PluginCatalog {
   patches: PluginPatchEntry[];
 }
 
-function getBaseUrl(): string {
-  const conn = dshClient.getConnection();
-  return conn?.url || "http://127.0.0.1:19387";
-}
+type BridgeJson = {
+  ok?: boolean;
+  error?: string;
+  data?: PluginCatalog;
+  info?: any;
+  [key: string]: any;
+};
 
-function getHeaders(): Record<string, string> {
-  const conn = dshClient.getConnection();
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-  if (conn?.token) {
-    headers["Authorization"] = `Bearer ${conn.token}`;
+function unwrap(json: BridgeJson, fallback: string): BridgeJson {
+  if (!json || json.ok === false) {
+    throw new Error(json?.error || fallback);
   }
-  return headers;
+  return json;
 }
 
 export async function fetchPluginCatalog(profile = "sdk"): Promise<PluginCatalog> {
-  const url = `${getBaseUrl()}/api/plugins?profile=${encodeURIComponent(profile)}`;
-  const resp = await fetch(url, {
-    method: "GET",
-    headers: getHeaders(),
-  });
-  if (!resp.ok) {
-    throw new Error(`Failed to fetch plugin catalog: ${resp.status} ${resp.statusText}`);
-  }
-  const json = await resp.json();
+  const json = await invoke<BridgeJson>("list_plugins", { profile });
   if (!json.ok) {
     throw new Error(json.error || "Failed to fetch plugins");
   }
-  return json.data;
+  return json.data as PluginCatalog;
 }
 
 export async function toggleBundle(name: string, enabled: boolean, profile = "sdk") {
-  const url = `${getBaseUrl()}/api/plugins/bundle/toggle`;
-  const resp = await fetch(url, {
-    method: "POST",
-    headers: getHeaders(),
-    body: JSON.stringify({ profile, name, enabled }),
-  });
-  if (!resp.ok) {
-    throw new Error(`Toggle failed: ${resp.status} ${resp.statusText}`);
-  }
-  const json = await resp.json();
-  if (!json.ok) {
-    throw new Error(json.error || "Toggle failed");
-  }
-  return json;
+  const json = await invoke<BridgeJson>("toggle_plugin_bundle", { name, enabled, profile });
+  return unwrap(json, "Toggle failed");
 }
 
 export async function togglePatchPlugin(id: string, enabled: boolean, name?: string, profile = "sdk") {
-  const url = `${getBaseUrl()}/api/plugins/plugin/toggle`;
-  const resp = await fetch(url, {
-    method: "POST",
-    headers: getHeaders(),
-    body: JSON.stringify({ profile, id, name, enabled }),
-  });
-  if (!resp.ok) {
-    throw new Error(`Toggle failed: ${resp.status} ${resp.statusText}`);
-  }
-  const json = await resp.json();
-  if (!json.ok) {
-    throw new Error(json.error || "Toggle failed");
-  }
-  return json;
+  const json = await invoke<BridgeJson>("toggle_patch_plugin", { id, name, enabled, profile });
+  return unwrap(json, "Toggle failed");
 }
 
 export async function installPlugin(spec: string, registry?: string, profile = "sdk") {
-  const url = `${getBaseUrl()}/api/plugins/install`;
-  const resp = await fetch(url, {
-    method: "POST",
-    headers: getHeaders(),
-    body: JSON.stringify({ profile, spec, registry }),
-  });
-  if (!resp.ok) {
-    const errBody = await resp.json().catch(() => ({}));
-    throw new Error(errBody.error || `Install failed: ${resp.status} ${resp.statusText}`);
-  }
-  const json = await resp.json();
-  if (!json.ok) {
-    throw new Error(json.error || "Install failed");
-  }
-  return json;
+  const json = await invoke<BridgeJson>("install_plugin", { spec, registry, profile });
+  return unwrap(json, "Install failed");
 }
 
 export async function removePlugin(name: string, profile = "sdk") {
-  const url = `${getBaseUrl()}/api/plugins/remove`;
-  const resp = await fetch(url, {
-    method: "POST",
-    headers: getHeaders(),
-    body: JSON.stringify({ profile, name }),
-  });
-  if (!resp.ok) {
-    const errBody = await resp.json().catch(() => ({}));
-    throw new Error(errBody.error || `Remove failed: ${resp.status} ${resp.statusText}`);
-  }
-  const json = await resp.json();
-  if (!json.ok) {
-    throw new Error(json.error || "Remove failed");
-  }
-  return json;
+  const json = await invoke<BridgeJson>("remove_plugin", { name, profile });
+  return unwrap(json, "Remove failed");
 }
 
 export async function inspectPlugin(spec: string, registry?: string) {
-  const url = `${getBaseUrl()}/api/plugins/inspect`;
-  const resp = await fetch(url, {
-    method: "POST",
-    headers: getHeaders(),
-    body: JSON.stringify({ spec, registry }),
-  });
-  if (!resp.ok) {
-    const errBody = await resp.json().catch(() => ({}));
-    throw new Error(errBody.error || `Inspect failed: ${resp.status}`);
-  }
-  const json = await resp.json();
+  const json = await invoke<BridgeJson>("inspect_plugin", { spec, registry });
   if (!json.ok) {
     throw new Error(json.error || "Inspect failed");
   }

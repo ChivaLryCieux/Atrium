@@ -9,7 +9,7 @@ use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use health::{probe_health, wait_for_health, HealthOutcome};
+use health::{wait_for_health, HealthOutcome};
 use paths::{bridge_paths, normalize_verbatim};
 use process::{debug_log, log_stream};
 
@@ -44,37 +44,11 @@ pub struct DshDaemon {
     child: Option<Child>,
     kernel_ready: bool,
     kernel_detail: Option<String>,
-    reseed_required: bool,
     #[cfg(target_os = "windows")]
     job: Option<job_windows::job::JobGuard>,
 }
 
 pub type SharedDaemon = Arc<Mutex<DshDaemon>>;
-
-impl DshDaemon {
-    pub fn new() -> Self {
-        Self {
-            connection: HarnessConnection::default(),
-            child: None,
-            kernel_ready: false,
-            kernel_detail: None,
-            reseed_required: false,
-            #[cfg(target_os = "windows")]
-            job: None,
-        }
-    }
-
-    pub async fn start(&mut self, http: &reqwest::Client, app: &tauri::AppHandle) -> Result<HarnessConnection, String> {
-        if self.connection.status == "ready" && self.child.is_some() {
-            return Ok(self.connection.clone());
-        }
-
-        if self.connection.status == "starting" && self.child.is_some() {
-            let port = self.connection.port;
-            let outcome = wait_for_health(http, port, 20).await;
-            self.apply_health_outcome(outcome);
-            return Ok(self.connection.clone());
-        }
 
 fn is_port_free(port: u16) -> bool {
     std::net::TcpListener::bind(("127.0.0.1", port)).is_ok()
@@ -97,27 +71,40 @@ pub fn pick_bridge_port(preferred: u16) -> u16 {
     preferred
 }
 
+impl DshDaemon {
+    pub fn new() -> Self {
+        Self {
+            connection: HarnessConnection::default(),
+            child: None,
+            kernel_ready: false,
+            kernel_detail: None,
+            #[cfg(target_os = "windows")]
+            job: None,
+        }
+    }
+
+    pub async fn start(&mut self, http: &reqwest::Client, app: &tauri::AppHandle) -> Result<HarnessConnection, String> {
+        if self.connection.status == "ready" && self.child.is_some() {
+            return Ok(self.connection.clone());
+        }
+
+        if self.connection.status == "starting" && self.child.is_some() {
+            let port = self.connection.port;
+            let outcome = wait_for_health(http, port, 20).await;
+            self.apply_health_outcome(outcome);
+            return Ok(self.connection.clone());
+        }
+
         let preferred_port: u16 = std::env::var("ATRIUM_BRIDGE_PORT")
             .ok()
             .and_then(|p| p.parse().ok())
             .unwrap_or(19387);
 
-        let outcome = probe_health(http, preferred_port).await;
-        if !matches!(outcome, HealthOutcome::Unreachable) {
-            self.apply_health_outcome(outcome);
-            let conn = HarnessConnection {
-                status: "ready".to_string(),
-                url: format!("http://127.0.0.1:{preferred_port}"),
-                port: preferred_port,
-                token: Some("atrium-session-token".to_string()),
-                pipe: None,
-                pid: None,
-                message: self.connection.message.clone(),
-            };
-            self.connection = conn.clone();
-            return Ok(conn);
-        }
-
+        // Never adopt a foreign listener on the preferred port: the bridge
+        // receives the operator's API keys and executes plugin installs, so
+        // trusting whatever happens to answer /healthz would hand those keys
+        // to any local process. Every Atrium instance spawns its own bridge
+        // with its own random token on a verified-free port.
         let port = pick_bridge_port(preferred_port);
         debug_log(&format!("start: preferred_port={preferred_port}, chosen_port={port}"));
 
@@ -256,11 +243,10 @@ pub fn pick_bridge_port(preferred: u16) -> u16 {
         self.connection.status = "standby".to_string();
         self.connection.pid = None;
         self.kernel_ready = false;
-        let result = self.start(http, app).await;
-        if result.is_ok() {
-            self.reseed_required = true;
-        }
-        result
+        // A respawned bridge has empty in-memory conversation state, so the
+        // bridge itself re-seeds fresh kernel sessions on the next turn —
+        // no shell-side cache needs invalidating.
+        self.start(http, app).await
     }
 
     fn child_alive(&mut self) -> bool {
@@ -268,10 +254,6 @@ pub fn pick_bridge_port(preferred: u16) -> u16 {
             Some(child) => matches!(child.try_wait(), Ok(None)),
             None => self.connection.status == "ready",
         }
-    }
-
-    pub fn take_reseed_required(&mut self) -> bool {
-        std::mem::take(&mut self.reseed_required)
     }
 
     fn apply_health_outcome(&mut self, outcome: HealthOutcome) {
