@@ -25,12 +25,23 @@ pub async fn execute_parallel_kernel(
     let futures = profiles.iter().enumerate().map(|(index, profile)| {
         let conversation = format!("{conversation}::parallel-{index}");
         let persona = profile.system_prompt.trim();
-        let persona_block = if persona.is_empty() {
-            String::new()
+        // Seed material is split from the operator input: the bridge prepends
+        // it only when this sub-conversation spawns a fresh kernel session,
+        // instead of re-stuffing persona blocks into every single turn.
+        let mut seed = String::new();
+        if let Some(sb) = &soul_block {
+            seed.push_str(sb);
+        }
+        if !persona.is_empty() {
+            seed.push_str(&format!("[算子准则]\n{persona}\n\n"));
+        }
+        let seed_context = if seed.is_empty() {
+            None
         } else {
-            format!("[算子准则]\n{persona}\n\n")
+            seed.push_str("[操作员输入]\n");
+            Some(seed)
         };
-        let prompt = format!("{}{}[操作员输入]\n{}", soul_block.clone().unwrap_or_default(), persona_block, user_input);
+        let prompt = user_input.clone();
         let request = KernelTurnRequest {
             conversation_id: conversation,
             stage_id: Some(format!("{}-{}", profile.id, index)),
@@ -43,6 +54,7 @@ pub async fn execute_parallel_kernel(
             workspace: workspace.clone(),
             execution_mode: execution_mode.clone(),
             prompt: prompt.clone(),
+            seed_context,
         };
         async move {
             let start_time = std::time::Instant::now();

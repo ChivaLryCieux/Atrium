@@ -296,6 +296,12 @@ export function runTurn(request, sseWrite) {
   }
   conversations.set(conversationId, record)
 
+  // Session affinity is owned HERE, at the layer that actually knows whether
+  // a live kernel session exists. The Rust side previously guessed at this
+  // with its own fingerprint cache — split-brain whenever the two invalidation
+  // inputs disagreed (worst case: persona silently lost after LRU eviction).
+  const seedContext = typeof request.seedContext === 'string' ? request.seedContext : ''
+
   const execution = record.chain.then(async () => {
     const entry = await ensureHarness(request)
     entry.activeTurns += 1
@@ -303,7 +309,13 @@ export function runTurn(request, sseWrite) {
     const turnRoute = { conversationId, stageId }
     const state = { usage: null, toolCalls: [], reasoningText: '', emittedText: '', aborted: false }
 
-    const effectivePrompt = prompt
+    // Seeding is decided at execution time, not enqueue time: a turn queued
+    // behind another must see the session its predecessor just bound. Fresh
+    // sessions (first turn, route change, harness eviction) receive the
+    // persona/soul seed exactly once; continuing sessions get the bare prompt.
+    const effectivePrompt = record.dshSessionId || !seedContext
+      ? prompt
+      : `${seedContext}${prompt}`
 
     const handle = {
       entry,

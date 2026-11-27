@@ -37,6 +37,7 @@ pub async fn execute_dag_kernel(
             },
         );
 
+        let (seed_context, prompt) = kernel_stage_prompt(stage, index, &user_input, soul);
         let request = KernelTurnRequest {
             conversation_id: conversation.to_string(),
             stage_id: Some(stage.id.clone()),
@@ -48,7 +49,8 @@ pub async fn execute_dag_kernel(
             reasoning_effort: reasoning_effort.clone(),
             workspace: workspace.clone(),
             execution_mode: execution_mode.clone(),
-            prompt: kernel_stage_prompt(stage, index, &user_input, soul),
+            prompt,
+            seed_context,
         };
 
         let start_time = std::time::Instant::now();

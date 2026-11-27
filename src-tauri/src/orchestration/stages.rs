@@ -67,25 +67,31 @@ pub fn stage_message_id(stage: &OrchestrationStage) -> String {
     stage.id.clone()
 }
 
-pub fn kernel_stage_prompt(stage: &OrchestrationStage, index: usize, user_input: &str, soul: Option<&str>) -> String {
+/// Compose a stage's turn as (seed_context, prompt). The seed — soul/persona
+/// blocks — is applied by the bridge only when the conversation spawns a fresh
+/// kernel session; the per-turn prompt (node instruction + operator input) is
+/// delivered every turn either way. Concatenated they reproduce the legacy
+/// fully-stuffed first-turn format exactly.
+pub fn kernel_stage_prompt(stage: &OrchestrationStage, index: usize, user_input: &str, soul: Option<&str>) -> (Option<String>, String) {
     let persona = stage.profile.system_prompt.trim();
-    let mut prompt = String::new();
     if index == 0 {
+        let mut seed = String::new();
         if let Some(soul) = soul.map(str::trim).filter(|s| !s.is_empty()) {
-            prompt.push_str(&format!("[人格设定]\n{soul}\n\n"));
+            seed.push_str(&format!("[人格设定]\n{soul}\n\n"));
         }
         if !persona.is_empty() {
-            prompt.push_str(&format!("[算子准则]\n{persona}\n\n"));
+            seed.push_str(&format!("[算子准则]\n{persona}\n\n"));
         }
-        prompt.push_str(&format!(
+        let prompt = format!(
             "[节点指令] {}\n\n[操作员输入]\n{}",
             stage.instruction, user_input
-        ));
+        );
+        (if seed.is_empty() { None } else { Some(seed) }, prompt)
     } else {
-        prompt.push_str(&format!(
+        let prompt = format!(
             "[节点指令] {}\n\n（前序节点输出已在本会话上下文中，请基于其继续推进。）",
             stage.instruction
-        ));
+        );
+        (None, prompt)
     }
-    prompt
 }

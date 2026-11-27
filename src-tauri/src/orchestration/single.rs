@@ -1,69 +1,29 @@
 use reqwest::Client;
-use std::collections::HashMap;
-use std::sync::OnceLock;
 use tauri::{AppHandle, Emitter};
-use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use crate::models::{AiProfile, ChatMessage, OrchestrationProgress};
 use super::common::{kernel_base_url, latest_user_input, record_turn_usage};
 use super::transport::{post_turn, KernelTurnRequest};
 
-static SINGLE_ROUTE_CACHE: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
-
-pub fn single_route_cache() -> &'static Mutex<HashMap<String, String>> {
-    SINGLE_ROUTE_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
-}
-
-const SINGLE_ROUTE_CACHE_CAP: usize = 512;
-
-pub fn reset_single_route_cache() {
-    if let Some(cache) = SINGLE_ROUTE_CACHE.get() {
-        cache.blocking_lock().clear();
-    }
-}
-
-pub fn has_settled_assistant(messages: &[ChatMessage]) -> bool {
-    messages
-        .iter()
-        .any(|m| m.role == "assistant" && !m.pending && !m.error)
-}
-
-pub fn single_route_fingerprint(
-    profile: &AiProfile,
-    reasoning_effort: Option<&str>,
-    workspace: Option<&str>,
-) -> String {
-    format!(
-        "deepseek-official|{}|{}|{}|{}|{}|{}",
-        profile.api_protocol.trim(),
-        profile.model.trim(),
-        reasoning_effort.unwrap_or_default().trim(),
-        profile.api_key.trim(),
-        kernel_base_url(&profile.endpoint, &profile.api_protocol).unwrap_or_default(),
-        workspace.unwrap_or_default().trim(),
-    )
-}
-
-pub fn single_kernel_prompt(
-    user_input: &str,
-    soul: Option<&str>,
-    system_prompt: &str,
-    seed: bool,
-) -> String {
-    if !seed {
-        return user_input.to_string();
-    }
-    let mut prompt = String::new();
+/// Compose the persona/soul seed prefix for a fresh kernel session. The
+/// operator input itself is NOT part of the seed — the bridge concatenates
+/// seed + prompt when (and only when) it spawns a fresh session, so continuing
+/// sessions are never re-seeded and evicted sessions are always re-seeded.
+pub fn single_seed_context(soul: Option<&str>, system_prompt: &str) -> Option<String> {
+    let mut seed = String::new();
     if let Some(s) = soul.map(str::trim).filter(|s| !s.is_empty()) {
-        prompt.push_str(&format!("[人格设定]\n{s}\n\n"));
+        seed.push_str(&format!("[人格设定]\n{s}\n\n"));
     }
     let trimmed_persona = system_prompt.trim();
     if !trimmed_persona.is_empty() {
-        prompt.push_str(&format!("[算子准则]\n{trimmed_persona}\n\n"));
+        seed.push_str(&format!("[算子准则]\n{trimmed_persona}\n\n"));
     }
-    prompt.push_str(&format!("[操作员输入]\n{user_input}"));
-    prompt
+    if seed.is_empty() {
+        return None;
+    }
+    seed.push_str("[操作员输入]\n");
+    Some(seed)
 }
 
 pub async fn execute_single_kernel(
@@ -83,21 +43,7 @@ pub async fn execute_single_kernel(
     };
     let user_input = latest_user_input(base_messages);
     let workspace = project.and_then(|(_, _, dir)| dir.map(str::to_string));
-    let fingerprint = single_route_fingerprint(
-        profile,
-        reasoning_effort.as_deref(),
-        workspace.as_deref(),
-    );
-
-    let settled = has_settled_assistant(base_messages);
-    let rerouted = single_route_cache()
-        .lock()
-        .await
-        .get(conversation)
-        .map(|seeded| seeded != &fingerprint)
-        .unwrap_or(settled);
-    let seed = !settled || rerouted;
-    let prompt = single_kernel_prompt(&user_input, soul, &profile.system_prompt, seed);
+    let seed_context = single_seed_context(soul, &profile.system_prompt);
     let stage_id = format!("{}-single", profile.id);
 
     let _ = app.emit(
@@ -123,7 +69,8 @@ pub async fn execute_single_kernel(
         reasoning_effort,
         workspace,
         execution_mode,
-        prompt: prompt.clone(),
+        prompt: user_input.clone(),
+        seed_context,
     };
 
     let start_time = std::time::Instant::now();
@@ -133,23 +80,16 @@ pub async fn execute_single_kernel(
             record_turn_usage(
                 app,
                 &profile.model,
-                &prompt,
+                &request.prompt,
                 &turn,
                 latency,
                 project,
             );
 
-            if seed {
-                let mut cache = single_route_cache().lock().await;
-                if cache.len() >= SINGLE_ROUTE_CACHE_CAP {
-                    cache.clear();
-                }
-                cache.insert(conversation.to_string(), fingerprint);
-            }
             let prompt_tokens = turn
                 .get_input_tokens()
                 .map(|n| n as usize)
-                .unwrap_or_else(|| crate::tokens::estimate_tokens(&prompt));
+                .unwrap_or_else(|| crate::tokens::estimate_tokens(&request.prompt));
             let completion_tokens = turn
                 .get_output_tokens()
                 .map(|n| n as usize)

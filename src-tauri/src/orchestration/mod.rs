@@ -19,7 +19,7 @@ pub use common::{cancel_conversation, register_cancellation, unregister_cancella
 use common::kernel_unavailable_message;
 use dag::execute_dag_kernel;
 use parallel::execute_parallel_kernel;
-use single::{execute_single_kernel, reset_single_route_cache};
+use single::execute_single_kernel;
 
 pub async fn execute(
     app: &AppHandle,
@@ -55,9 +55,6 @@ pub async fn execute(
     } else {
         let mut guard = daemon.lock().await;
         let _ = guard.ensure_running(http, app).await;
-        if guard.take_reseed_required() {
-            reset_single_route_cache();
-        }
         if !guard.kernel_available() {
             let _ = guard.start(http, app).await;
         }

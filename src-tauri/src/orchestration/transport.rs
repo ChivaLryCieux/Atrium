@@ -24,6 +24,12 @@ pub struct KernelTurnRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub execution_mode: Option<String>,
     pub prompt: String,
+    /// Persona/soul seed prefix applied ONLY when the bridge starts a fresh
+    /// kernel session for this conversation (first turn, route change, or
+    /// harness eviction). The bridge owns the freshness decision; the shell
+    /// just supplies the seed material.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seed_context: Option<String>,
 }
 
 /// Find the boundary of the next complete SSE message in a byte buffer.
