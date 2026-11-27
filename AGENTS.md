@@ -111,7 +111,15 @@ public/fonts/             # OFL 1.1 三字体本地自托管（离线可用，�
 - 新增 Tauri 命令三步：`src-tauri/src/commands/<域>_cmd.rs` 实现 →
   `commands/mod.rs` 导出 → `lib.rs` `generate_handler!` 注册。前端经
   `@tauri-apps/api/core` 的 `invoke()` 调用，事件经 `kernel-stream-event`
-  下发（`dshClient.ts` 做 IPC/WS 双通道去重，recent keys 上限 200）。
+  下发。桥接为每条事件打全局单调 `seq`（`ws_broadcast.js`），
+  `dshClient.ts` 按 seq 做 IPC/WS 双通道**精确去重**（FIFO 窗口 500，
+  WS 重连即重置）；流式合并的唯一入口是 `useKernelStreams` →
+  `utils/streamMerge.ts` 纯函数（有 vitest 覆盖），**禁止再开第二条
+  合并路径**（per-send listener 已删除）。
+- 会话持久化**服务端单写者**：`execute_orchestration` 在回合开始（操作员
+  输入）与结算（终态回复）两次落盘，按 conversation 键控、不受前端会话
+  切换影响。前端**没有**逐 token 防抖 autosave（已删除），也不再把
+  `save_history` 当热路径（遗留迁移一次性跑完即清空）。
 - `AppState` 常驻 `http`（120s）与 `kernel_http`（900s，长 tool-turn 专用）；
   不要把长因子的 agent-turn 挂到短 client 上。
 - 进程退出语义：`RunEvent::Exit` 时 `block_on(daemon.stop())`，
@@ -150,6 +158,17 @@ public/fonts/             # OFL 1.1 三字体本地自托管（离线可用，�
   session.event`）；桌面侧不做内核内改造。
 - 桥接默认端口 **19387**（`dshClient.ts` + Rust daemon 共用假设），改端口
   必须双端同改并更新 README 验证节。
+- **桥接鉴权是均匀的**：除 `/healthz`、`/status`、`/api/harness/info`
+  三个只读探活端点外，一切端点（`/v1/turn`、`/v1/abort`、插件管理）
+  都要 Bearer token。每个 Atrium 实例**只 spawn 自己的桥接**（随机
+  token + 空闲端口），**已移除「领养端口上现有监听者」的路径**——桥接
+  会接触操作员 API key 并可执行插件安装，信任任意本地监听者等于拱手
+  送出密钥。插件管理一律走 Tauri 命令代理（`plugin_cmd.rs`），前端
+  不得直连桥接 HTTP。
+- **会话亲和性单脑化**：是否给内核会话播种（人格/算子准则）由桥接依据
+  `dshSessionId` 是否在内存中存活来裁决（`seedContext` 协议字段），
+  Rust 只组装素材不做判断——路由变更、harness LRU 驱逐、桥接重启都会
+  自然触发重播种，不要再在 shell 侧重建 fingerprint 缓存。
 - token 计量：内核上报优先，缺失回退本地估算；按模型×项目双维度记。
 - `bundle-runtime.mjs` 的 Windows 删除走 robocopy 镜像清空（长路径/锁文件
   陷阱），不要换成天真 `rm -rf`；**禁止把 workspace 树整棵拷进 resources**
